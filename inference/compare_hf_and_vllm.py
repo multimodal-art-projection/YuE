@@ -152,12 +152,11 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     comparator = ModelComparison(args.model_path, args.cache_dir, dtype, args.output_length)
-    prompt_text = [
-        """Generate music from the given lyrics segment by segment.
+    prompt_text = """Generate music from the given lyrics segment by segment.
 [Genre] male crisp vocal R&B Love Romance
 In the heart of knowledge, where dreams take flight,
 A vision unfolds, bathed in radiant light."""
-        ]
+
     hf_ids, vllm_ids, differences = comparator.compare_outputs(prompt_text)
     
     np.save(os.path.join(args.output_dir, "hf_output.npy"), hf_ids.cpu().numpy())
