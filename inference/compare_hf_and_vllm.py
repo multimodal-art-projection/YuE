@@ -66,7 +66,7 @@ class ModelComparison:
         
         hf_model_cache_dir = self._get_hf_model_cache_dir()
         self.vllm_model = LLM(
-            model=hf_model_cache_dir, gpu_memory_utilization=0.8, dtype=self.dtype
+            model=hf_model_cache_dir, gpu_memory_utilization=0.8, dtype=self.dtype, seed=42
         )
     
     def _get_hf_model_cache_dir(self, revision="dc734b661b51e4d51cfa176ad64b72f66d67c291") -> str:
@@ -86,10 +86,13 @@ class ModelComparison:
             min_tokens=self.output_length,
             max_tokens=self.output_length,
             logprobs=1,
+            seed=42,
+            top_k=50,
         )
     
     def generate_hf(self, input_ids: torch.Tensor, **overrides) -> torch.Tensor:
         """Generates output using Hugging Face model."""
+        print("generating huggingface.....")
         params = {**default_sampling_params, **overrides}
         do_sample = params["temperature"] > 0
         with torch.no_grad():
@@ -98,6 +101,7 @@ class ModelComparison:
                 min_new_tokens=self.output_length,
                 max_new_tokens=self.output_length,
                 top_p=params["top_p"],
+                top_k=50,
                 temperature=params["temperature"],
                 repetition_penalty=params["repetition_penalty"],
                 do_sample=do_sample,
@@ -106,6 +110,7 @@ class ModelComparison:
     
     def generate_vllm(self, input_ids: List[List[int]]) -> List[int]:
         """Generates output using vLLM."""
+        print("generating vllm.....")
         sampling_params = self._get_sampling_params()
         outputs = self.vllm_model.generate(prompt_token_ids=input_ids, sampling_params=sampling_params)
         return [list(log_prob.keys())[0] for log_prob in outputs[0].outputs[0].logprobs]
@@ -141,10 +146,10 @@ def main():
     parser = argparse.ArgumentParser(description="Model comparison between Hugging Face and VLLM.")
     parser.add_argument('--seed', type=int, default=42, help='Random seed for initialization')
     parser.add_argument('--model_path', type=str, default="m-a-p/YuE-s1-7B-anneal-en-cot", help='Path to the model')
-    parser.add_argument('--cache_dir', type=str, default="/aifs4su/mmcode/codeclm/opensuno_publish", help='Cache directory')
+    parser.add_argument('--cache_dir', type=str, default="/root/.cache/huggingface/hub", help='Cache directory')
     parser.add_argument('--dtype', type=str, default='bf16', choices=['bf16', 'fp16'], help='Model data type')
     parser.add_argument('--output_length', type=int, default=300, help='Output sequence length')
-    parser.add_argument('--output_dir', type=str, default="/aifs4su/mmcode/codeclm/opensuno_publish/YuE/output", help='Output directory')
+    parser.add_argument('--output_dir', type=str, default="/app/output", help='Output directory')
     args = parser.parse_args()
     
     seed_everything(args.seed)
@@ -161,7 +166,7 @@ A vision unfolds, bathed in radiant light."""
     
     np.save(os.path.join(args.output_dir, "hf_output.npy"), hf_ids.cpu().numpy())
     np.save(os.path.join(args.output_dir, "vllm_output.npy"), np.array(vllm_ids))
-    # print(differences)
+    print(differences)
 
 if __name__ == "__main__":
     main()
