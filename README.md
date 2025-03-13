@@ -1,5 +1,8 @@
 <p align="center">
-    <img src="./assets/logo/白底.png" width="400" />
+    <picture>
+        <source srcset="./assets/logo/黑底.svg" media="(prefers-color-scheme: dark)">
+        <img src="./assets/logo/白底.svg" width="40%">
+    </picture>
 </p>
 
 <p align="center">
