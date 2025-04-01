@@ -18,6 +18,13 @@ Our model's name is **YuE (乐)**. In Chinese, the word means "music" and "happi
 YuE is a groundbreaking series of open-source foundation models designed for music generation, specifically for transforming lyrics into full songs (lyrics2song). It can generate a complete song, lasting several minutes, that includes both a catchy vocal track and accompaniment track. YuE is capable of modeling diverse genres/languages/vocal techniques. Please visit the [**Demo Page**](https://map-yue.github.io/) for amazing vocal performance.
 
 ## News and Updates
+
+* **2025.04.01** Suport VLLM inference with classifier free guidance.
+
+
+
+
+
 * **2025.02.07 🎉** Get YuE for Windows on [pinokio](https://pinokio.computer).
 * **2025.02.06** Join Us on Discord! [![Discord](https://img.shields.io/discord/842440537755353128?color=%237289da&logo=discord)](https://discord.gg/ssAyWMnMzu)
 
@@ -193,6 +200,18 @@ python infer.py \
     --audio_prompt_path ../prompt_egs/pop.00001.mp3 \
     --prompt_start_time 0 \
     --prompt_end_time 30 
+```
+
+### VLLM inference
+```
+# install modified vllm with classifier free guidance
+cd vllm
+VLLM_USE_PRECOMPILED=1 pip install --editable .
+
+
+# Inference with VLLM
+cd inference
+bash inference_vllm.sh
 ```
 ---
  

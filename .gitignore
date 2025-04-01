@@ -164,3 +164,6 @@ cython_debug/
 output
 inference/xcodec_mini_infer
 inference/run_infer.sh
+inference/debug
+transformers
+ckpts

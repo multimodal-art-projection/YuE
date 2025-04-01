@@ -83,8 +83,8 @@ device = torch.device(f"cuda:{cuda_idx}" if torch.cuda.is_available() else "cpu"
 mmtokenizer = _MMSentencePieceTokenizer("./mm_tokenizer_v0.2_hf/tokenizer.model")
 model = AutoModelForCausalLM.from_pretrained(
     stage1_model, 
-    torch_dtype=torch.bfloat16,
-    attn_implementation="flash_attention_2", # To enable flashattn, you have to install flash-attn
+    torch_dtype=torch.float32,
+    # attn_implementation="flash_attention_2", # To enable flashattn, you have to install flash-attn
     # device_map="auto",
     )
 # to device, if gpu is available
