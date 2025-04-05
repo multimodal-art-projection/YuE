@@ -11,7 +11,7 @@ python inference_vllm_pipeline.py \
     --lyrics_txt ../prompt_egs/lyrics.txt \
     --run_n_segments 6 \
     --stage2_batch_size 16 \
-    --output_dir ../output/vllm_cfg1.5_seed233 \
+    --output_dir ../output/vllm_cfg1.5_1.2_seed233 \
     --max_new_tokens 3000 \
     --repetition_penalty 1.1 \
     --seed 233

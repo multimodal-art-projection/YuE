@@ -234,6 +234,28 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
         print(f'Section {i}: output length {len(input_ids)} exceeding context length {max_context}, now using the last {max_context} tokens.')
         input_ids = input_ids[-(max_context):]
     # import pdb; pdb.set_trace()
+    if i == 1:
+        sampling_params = SamplingParams(
+                top_k=50,
+                top_p=0.93,
+                temperature=1.0,
+                repetition_penalty=args.repetition_penalty,
+                min_tokens=100,
+                max_tokens=max_new_tokens,
+                stop_token_ids=[mmtokenizer.eoa],
+                guidance_scale=1.5
+            )
+    else:
+        sampling_params = SamplingParams(
+            top_k=50,
+            top_p=0.93,
+            temperature=1.0,
+            repetition_penalty=args.repetition_penalty,
+            min_tokens=100,
+            max_tokens=max_new_tokens,
+            stop_token_ids=[mmtokenizer.eoa],
+            guidance_scale=1.2
+        )
     with torch.no_grad():
 
         batch_output = model.generate(
