@@ -31,7 +31,8 @@ from codecmanipulator import CodecManipulator
 # Constants for sampling parameters
 default_sampling_params = {
     "top_p": 0.93,
-    "temperature": 1.0,
+    #"temperature": 1.0,
+    "temperature":0,
     "repetition_penalty": 1.2,
 }
 
@@ -64,11 +65,21 @@ class ModelComparison:
             self.model_path, torch_dtype=self.dtype, cache_dir=self.cache_dir
         ).to(self.device).eval()
         
-        hf_model_cache_dir = self._get_hf_model_cache_dir()
+        #hf_model_cache_dir = self._get_hf_model_cache_dir()
+        #self.vllm_model = LLM(
+        #    model=hf_model_cache_dir, gpu_memory_utilization=0.8, dtype=self.dtype, seed=42
+        #)
+
         self.vllm_model = LLM(
-            model=hf_model_cache_dir, gpu_memory_utilization=0.8, dtype=self.dtype, seed=42
+            model=self.model_path,  # 直接使用用户提供的本地路径
+            #tensor_parallel_size=2,
+            gpu_memory_utilization=0.8,
+            dtype=self.dtype,
+            seed=42,
+            download_dir=self.cache_dir,  # 指定下载缓存目录（可选）
+            enforce_eager=True  
         )
-    
+
     def _get_hf_model_cache_dir(self, revision="dc734b661b51e4d51cfa176ad64b72f66d67c291") -> str:
         """Returns the cache directory path for the Hugging Face model."""
         # TODO: get commit hash instead of revision hardcode
@@ -102,7 +113,7 @@ class ModelComparison:
                 max_new_tokens=self.output_length,
                 top_p=params["top_p"],
                 top_k=50,
-                temperature=params["temperature"],
+                #temperature=params["temperature"],
                 repetition_penalty=params["repetition_penalty"],
                 do_sample=do_sample,
             )

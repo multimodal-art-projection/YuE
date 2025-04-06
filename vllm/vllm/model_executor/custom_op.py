@@ -98,7 +98,8 @@ class CustomOp(nn.Module):
         elif current_platform.is_out_of_tree():
             return self.forward_oot
         else:
-            return self.forward_cuda
+            #return self.forward_cuda
+            return self.forward_native
 
     @classmethod
     def enabled(cls) -> bool:
