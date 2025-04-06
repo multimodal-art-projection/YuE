@@ -399,30 +399,30 @@ class repackage_wheel(build_ext):
                 package_data[package_name].append(file_name)
 
 
-#def _is_hpu() -> bool:
-#    # if VLLM_TARGET_DEVICE env var was set explicitly, skip HPU autodetection
-#    if os.getenv("VLLM_TARGET_DEVICE", None) == VLLM_TARGET_DEVICE:
-#        return VLLM_TARGET_DEVICE == "hpu"
-
-#    # if VLLM_TARGET_DEVICE was not set explicitly, check if hl-smi succeeds,
-#    # and if it doesn't, check if habanalabs driver is loaded
-#    is_hpu_available = False
-#    try:
-#        out = subprocess.run(["hl-smi"], capture_output=True, check=True)
-#        is_hpu_available = out.returncode == 0
-#    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
-#        if sys.platform.startswith("linux"):
-#            try:
-#                output = subprocess.check_output(
-#                    'lsmod | grep habanalabs | wc -l', shell=True)
-#                is_hpu_available = int(output) > 0
-#            except (ValueError, FileNotFoundError, PermissionError,
-#                    subprocess.CalledProcessError):
-#                pass
-#    return is_hpu_available
-
 def _is_hpu() -> bool:
-    return False
+    # if VLLM_TARGET_DEVICE env var was set explicitly, skip HPU autodetection
+    if os.getenv("VLLM_TARGET_DEVICE", None) == VLLM_TARGET_DEVICE:
+        return VLLM_TARGET_DEVICE == "hpu"
+
+    # if VLLM_TARGET_DEVICE was not set explicitly, check if hl-smi succeeds,
+    # and if it doesn't, check if habanalabs driver is loaded
+    is_hpu_available = False
+    try:
+        out = subprocess.run(["hl-smi"], capture_output=True, check=True)
+        is_hpu_available = out.returncode == 0
+    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
+        if sys.platform.startswith("linux"):
+            try:
+                output = subprocess.check_output(
+                    'lsmod | grep habanalabs | wc -l', shell=True)
+                is_hpu_available = int(output) > 0
+            except (ValueError, FileNotFoundError, PermissionError,
+                    subprocess.CalledProcessError):
+                pass
+    return is_hpu_available
+
+#def _is_hpu() -> bool:
+#    return False
 
 def _no_device() -> bool:
     return VLLM_TARGET_DEVICE == "empty"
