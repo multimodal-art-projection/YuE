@@ -1,4 +1,43 @@
-# SPDX-License-Identifier: Apache-2.0
+from vllm.config import get_current_vllm_config
+from vllm.platforms import current_platform
+from vllm.model_executor.custom_op import CustomOp
+
+_original_forward = CustomOp.dispatch_forward
+
+def new_forward(self):
+    # NOTE(woosuk): Here we assume that vLLM was built for only one
+    # specific backend. Currently, we do not support dynamic dispatching.
+    compilation_config = get_current_vllm_config().compilation_config
+    enabled = self.enabled()
+    if enabled:
+        compilation_config.enabled_custom_ops.update([self.__class__.name])
+    else:
+        compilation_config.disabled_custom_ops.update(
+            [self.__class__.name])
+
+    if not enabled:
+        return self.forward_native
+
+    if current_platform.is_rocm():
+        return self.forward_hip
+    elif current_platform.is_cpu():
+        return self.forward_cpu
+    elif current_platform.is_hpu():
+        return self.forward_hpu
+    elif current_platform.is_tpu():
+        return self.forward_tpu
+    elif current_platform.is_xpu():
+        return self.forward_xpu
+    elif current_platform.is_neuron():
+        return self.forward_neuron
+    elif current_platform.is_out_of_tree():
+        return self.forward_oot
+    else:
+        return self.forward_native
+
+CustomOp.dispatch_forward = new_forward
+
+#  SPDX-License-Identifier: Apache-2.0
 import os
 import sys
 import json
@@ -111,10 +150,10 @@ class BatchProcessor:
             stage1_results = self._process_stage1(batch_configs)
             
             # Stage2处理
-            stage2_results = self._process_stage2(stage1_results, batch_configs)
+            stage2_result = self._process_stage2()
             
             # 音频处理
-            self._process_audio_outputs(stage2_results)
+            self._process_audio_outputs(stage2_result)
             
         finally:
             #ray.shutdown()
@@ -174,14 +213,26 @@ class BatchProcessor:
                 # 构建prompt
                 prompt_texts = self._build_prompts(lyrics, genres)
                 #audio_prompt = self._process_audio_prompt(args_copy)
-        
+
+                if i==1:
+                    with open('output_infer_vllm_batching_2.txt', 'a') as f:
+                        print(f"the whole prompt texts for request {idx}: {prompt_texts}\n",file=f) 
+
                 p = prompt_texts[i]
 
                 # 构建当前segment的prompt
                 section_text = p.replace('[start_of_segment]', '').replace('[end_of_segment]', '')
+
+                with open('output_infer_vllm_batching_2.txt', 'a') as f:
+                    print(f"the prompt texts for request {idx} , segment {i}: {section_text}\n",file=f)
+
                 if i == 1:
                     if args_copy.use_audio_prompt or args_copy.use_dual_tracks_prompt:
                         audio_prompt = self._process_audio_prompt(args_copy)
+
+                        with open('output_infer_vllm_batching_2.txt', 'a') as f:
+                            print(f"audio_prompt_codec_ids {idx} for segment {i}: {audio_prompt}\n",file=f)
+                        
                         prompt_ids = (
                             self.mmtokenizer.tokenize(prompt_texts[0]) +
                             self.mmtokenizer.tokenize("[start_of_reference]") +
@@ -195,10 +246,18 @@ class BatchProcessor:
                 else:
                     prompt_ids = end_of_segment + start_of_segment + self.mmtokenizer.tokenize(section_text) + [soa_token] + self.codectool.sep_ids
                 
+                with open('output_infer_vllm_batching_2.txt', 'a') as f:
+                    print(f"prompt_ids idx {idx} for segment {i}: {prompt_ids}\n",file=f)
+
                 prompt_ids_list.append(prompt_ids)
                 # 上下文窗口管理
-                max_context = 16384 - args_copy.max_new_tokens - 1
+                #max_context = 16384 - self.args.max_new_tokens - 1
+                max_context = 32768 - self.args.max_new_tokens - 1
                 input_ids = raw_output_list[idx] + prompt_ids if i > 1 else prompt_ids
+
+                with open('output_infer_vllm_batching_2.txt', 'a') as f:
+                    print(f"input_ids idx {idx} for segment {i}: {input_ids}\n",file=f)
+
                 if len(input_ids) > max_context:
                     print(f'Section {i}: output length {len(input_ids)} exceeding context length {max_context}, now using the last {max_context} tokens.')
                     input_ids = input_ids[-max_context:]
@@ -234,14 +293,15 @@ class BatchProcessor:
                         guidance_scale=1.0
                     )
             with torch.no_grad():
-                print(f"Start generating for segment {i}") 
+                #print(f"Start generating for segment {i}") 
                 batch_output = self.stage1_model.generate(
-                    prompt_token_ids=p,
-                    sampling_params=sampling_params,
-                    use_tqdm=False
+                    prompt_token_ids = p,
+                    sampling_params = sampling_params,
+                    use_tqdm = False
                 )
-                print(f"Generation completed for {len(batch_output)} samples")
-                output_seq_list = list(list(single_output.outputs[0].token_ids) for single_output in batch_output)
+                #print(f"Generation completed for {len(batch_output)} samples")
+                #output_seq_list = list(list(single_output.outputs[0].token_ids) for single_output in batch_output)
+                output_seq_list = [list(sigle_output.outputs[0].token_ids) for sigle_output in batch_output]
                 for output_seq in output_seq_list:
                     if output_seq[-1] != eoa_token:
                         output_seq.append(eoa_token)
@@ -262,13 +322,19 @@ class BatchProcessor:
                     raw_output_list[idx] = raw_output_list[idx] + current_prompt + current_output
                 else:
                     raw_output_list[idx] = current_prompt + current_output    
+                
+                raw_output_temp = raw_output_list[idx]
+                with open('output_infer_vllm_batching_2.txt', 'a') as f:
+                    print(f"raw_output idx {idx} for segment {i}: {raw_output_temp}\n",file=f)
 
         # 解析生成的代码
+        stage1_output_dir = os.path.join(self.args.output_dir, f"stage1")
+        os.makedirs(stage1_output_dir, exist_ok=True)
         for idx, config in enumerate(tqdm(batch_configs, desc="Stage1 audio code analysis...")):
             args_copy = self._create_args_copy(config)
-            
-            stage1_output_dir = os.path.join(args_copy.output_dir, f"stage1")
-            os.makedirs(stage1_output_dir, exist_ok=True)
+
+            #stage1_output_dir = os.path.join(args_copy.output_dir, f"stage1")
+            #os.makedirs(stage1_output_dir, exist_ok=True)
 
             random_id = uuid.uuid4()
             genres = self._load_genres(args_copy)
@@ -276,7 +342,6 @@ class BatchProcessor:
             ids = np.array(raw_output_list[idx])
             soa_idx = np.where(ids == soa_token)[0]
             eoa_idx = np.where(ids == eoa_token)[0]
-
             if len(soa_idx)!=len(eoa_idx):
                 raise ValueError(f'in request: {idx}, invalid pairs of soa and eoa, Num of soa: {len(soa_idx)}, Num of eoa: {len(eoa_idx)}')
 
@@ -287,14 +352,10 @@ class BatchProcessor:
                 if codec_ids[0] == 32016:  # 特殊token过滤
                     codec_ids = codec_ids[1:]
                 codec_ids = codec_ids[:2 * (len(codec_ids) // 2)]
-
-                # 分离音轨
                 vocal_ids = self.codectool.ids2npy(rearrange(codec_ids, "(n b) -> b n", b=2)[0])
-                inst_ids = self.codectool.ids2npy(rearrange(codec_ids, "(n b) -> b n", b=2)[1])
-        
                 vocals.append(vocal_ids)
+                inst_ids = self.codectool.ids2npy(rearrange(codec_ids, "(n b) -> b n", b=2)[1])
                 instrumentals.append(inst_ids)
-
             vocals = np.concatenate(vocals, axis=1)
             instrumentals = np.concatenate(instrumentals, axis=1)
             vocal_save_path = os.path.join(stage1_output_dir, f"{genres.replace(' ', '-')}_tk{sampling_params.top_k}_tp{sampling_params.top_p}_T{sampling_params.temperature}_rp{sampling_params.repetition_penalty}_maxtk{self.args.max_new_tokens}_{random_id}_vtrack".replace('.', '@')+'.npy')
@@ -303,7 +364,6 @@ class BatchProcessor:
             np.save(inst_save_path, instrumentals)
             self.stage1_output_set.append(vocal_save_path)
             self.stage1_output_set.append(inst_save_path)
-        
             outputs.append({
                 "vocals": vocals,
                 "instrumentals": instrumentals,
@@ -392,7 +452,7 @@ class BatchProcessor:
         raw_codes = raw_codes.cpu().numpy().astype(np.int32)
         return self.codectool.npy2ids(raw_codes[0])
 
-    def _process_stage2(self, stage1_results, batch_configs):
+    def _process_stage2(self):
         print("Stage 2 inference...")
         
         self.stage2_model = LLM(
@@ -408,10 +468,10 @@ class BatchProcessor:
             gpu_memory_utilization=0.9,   # 显存利用率调整
             disable_custom_all_reduce=True 
         )
-        stage2_results = self._stage2_inference(stage1_results, batch_size=self.args.stage2_batch_size)
+        stage2_results = self._stage2_inference(batch_size=self.args.stage2_batch_size)
         print(stage2_results)
         print('Stage 2 DONE.\n')
-        if not args.disable_offload_model:
+        if not self.args.disable_offload_model:
             destroy_model_parallel()
             destroy_distributed_environment()
             del self.stage2_model.llm_engine.model_executor
@@ -435,7 +495,6 @@ class BatchProcessor:
         
     def _stage2_generate(self, prompt, batch_size=16):
         # process audio codes to tokens
-        model = self.stage2_model
         codec_ids = self.codectool.unflatten(prompt, n_quantizer=1)
         codec_ids = self.codectool.offset_tok_ids(
                         codec_ids, 
@@ -483,7 +542,7 @@ class BatchProcessor:
                 prompt_batch[i, :prompt_lengths[i]].tolist() 
                     for i in range(batch_size)
                 ]
-            batch_output = model.generate(
+            batch_output = self.stage2_model.generate(
                 prompt_token_ids=prompt_list,
                 sampling_params=sampling_params,
                 use_tqdm=False,
@@ -500,167 +559,158 @@ class BatchProcessor:
         output = np.concatenate([prompt_batch[i, len(initial):prompt_lengths[i]] for i in range(batch_size)])
 
         return output
-
-    def _stage2_inference(self, stage1_results, batch_size=4):
-        stage2_results = []
-        for i,stage1_result in enumerate(tqdm(stage1_results, desc="Stage2 inference...")):
-            args_copy = self._create_args_copy(stage1_result["config"])
-            stage2_output_dir = os.path.join(args_copy.output_dir, 'stage2')
-            os.makedirs(stage2_output_dir, exist_ok=True)
-            output_filename_vocal = os.path.join(stage2_output_dir, os.path.basename(stage1_result["vocal_save_path"]))
-            output_filename_inst = os.path.join(stage2_output_dir, os.path.basename(stage1_result["inst_save_path"]))
+    
+    def _stage2_inference(self, batch_size=4):
+        stage2_result = []
+        stage2_output_dir = os.path.join(self.args.output_dir, f"stage2")
+        os.makedirs(stage2_output_dir, exist_ok=True)
+        stage1_output_set = self.stage1_output_set
+        for i in tqdm(range(len(stage1_output_set))):
+            output_filename = os.path.join(stage2_output_dir, os.path.basename(stage1_output_set[i]))
         
-            self._stage2_inference_post(output_filename_vocal, stage1_result["vocal_save_path"], batch_size)
-            self._stage2_inference_post(output_filename_inst, stage1_result["inst_save_path"], batch_size)
-            stage2_results.append({
-                "config": stage1_result["config"],
-                "vocal_and_inst_save_path": [output_filename_vocal, output_filename_inst]
-            })
-        return stage2_results
-
-    def _stage2_inference_post(self, output_filename, input_filename, batch_size):
-        if os.path.exists(output_filename):
-            print(f'{output_filename} stage2 has done.')
-            return None
+            if os.path.exists(output_filename):
+                print(f'{output_filename} stage2 has done.')
+                continue
         
-        # Load the prompt
-        prompt = np.load(input_filename).astype(np.int32)
+            # Load the prompt
+            prompt = np.load(stage1_output_set[i]).astype(np.int32)
         
-        # Only accept 6s segments
-        output_duration = prompt.shape[-1] // 50 // 6 * 6
-        num_batch = output_duration // 6
+            # Only accept 6s segments
+            output_duration = prompt.shape[-1] // 50 // 6 * 6
+            num_batch = output_duration // 6
         
-        if num_batch <= batch_size:
-            # If num_batch is less than or equal to batch_size, we can infer the entire prompt at once
-            output = self._stage2_generate(prompt[:, :output_duration*50], batch_size=num_batch)
-        else:
-            # If num_batch is greater than batch_size, process in chunks of batch_size
-            segments = []
-            num_segments = (num_batch // batch_size) + (1 if num_batch % batch_size != 0 else 0)
+            if num_batch <= batch_size:
+                # If num_batch is less than or equal to batch_size, we can infer the entire prompt at once
+                output = self._stage2_generate(prompt[:, :output_duration*50], batch_size=num_batch)
+            else:
+                # If num_batch is greater than batch_size, process in chunks of batch_size
+                segments = []
+                num_segments = (num_batch // batch_size) + (1 if num_batch % batch_size != 0 else 0)
 
-            for seg in tqdm(range(num_segments), desc="Stage2 inference..."):
-                start_idx = seg * batch_size * 300
-                # Ensure the end_idx does not exceed the available length
-                end_idx = min((seg + 1) * batch_size * 300, output_duration*50)  # Adjust the last segment
-                current_batch_size = batch_size if seg != num_segments-1 or num_batch % batch_size == 0 else num_batch % batch_size
-                segment = self._stage2_generate(
-                    prompt[:, start_idx:end_idx],
-                    batch_size=current_batch_size
-                )
-                segments.append(segment)
+                for seg in tqdm(range(num_segments), desc="Stage2 inference..."):
+                    start_idx = seg * batch_size * 300
+                    # Ensure the end_idx does not exceed the available length
+                    end_idx = min((seg + 1) * batch_size * 300, output_duration*50)  # Adjust the last segment
+                    current_batch_size = batch_size if seg != num_segments-1 or num_batch % batch_size == 0 else num_batch % batch_size
+                    segment = self._stage2_generate(
+                        prompt[:, start_idx:end_idx],
+                        batch_size=current_batch_size
+                    )
+                    segments.append(segment)
 
-            # Concatenate all the segments
-            output = np.concatenate(segments, axis=0)
+                # Concatenate all the segments
+                output = np.concatenate(segments, axis=0)
         
-        # Process the ending part of the prompt
-        if output_duration*50 != prompt.shape[-1]:
-            ending = self._stage2_generate(prompt[:, output_duration*50:], batch_size=1)
-            output = np.concatenate([output, ending], axis=0)
-        output = self.codectool_stage2.ids2npy(output)
+            # Process the ending part of the prompt
+            if output_duration*50 != prompt.shape[-1]:
+                ending = self._stage2_generate(prompt[:, output_duration*50:], batch_size=1)
+                output = np.concatenate([output, ending], axis=0)
+            output = self.codectool_stage2.ids2npy(output)
 
-        # Fix invalid codes (a dirty solution, which may harm the quality of audio)
-        # We are trying to find better one
-        fixed_output = copy.deepcopy(output)
-        for i, line in enumerate(output):
-            for j, element in enumerate(line):
-                if element < 0 or element > 1023:
-                    counter = Counter(line)
-                    most_frequant = sorted(counter.items(), key=lambda x: x[1], reverse=True)[0][0]
-                    fixed_output[i, j] = most_frequant
-        # save output
-        np.save(output_filename, fixed_output)
-        return fixed_output
-    def _stage2_logits_processor(self, logits):
-        """Stage2 logits处理"""
-        blocked_tokens = list(range(0, 46358)) + list(range(53526, self.stage2_model.get_tokenizer().vocab_size))
-        logits[:, blocked_tokens] = -float('inf')
-        return logits
-    def _process_audio_outputs(self, stage2_results):
+            # Fix invalid codes (a dirty solution, which may harm the quality of audio)
+            # We are trying to find better one
+            fixed_output = copy.deepcopy(output)
+            for i, line in enumerate(output):
+                for j, element in enumerate(line):
+                    if element < 0 or element > 1023:
+                        counter = Counter(line)
+                        most_frequant = sorted(counter.items(), key=lambda x: x[1], reverse=True)[0][0]
+                        fixed_output[i, j] = most_frequant
+            # save output
+            np.save(output_filename, fixed_output)
+            stage2_result.append(output_filename)
+        return stage2_result
+
+    def _process_audio_outputs(self, stage2_result):
         # reconstruct tracks
-        #recons_output_dir = os.path.join(args.output_dir, "recons")
-        #recons_mix_dir = os.path.join(recons_output_dir, 'mix')
-        #os.makedirs(recons_mix_dir, exist_ok=True)
-        #tracks = []
-        for stage2_result in stage2_results:
-            args_copy = self._create_args_copy(stage2_result["config"])
-            recons_output_dir = os.path.join(args_copy.output_dir, "recons")
-            recons_mix_dir = os.path.join(recons_output_dir, 'mix')
-            os.makedirs(recons_mix_dir, exist_ok=True)
-            tracks = []
-            for npy in stage2_result["vocal_and_inst_save_path"]:
-                codec_result = np.load(npy)
-                decodec_rlt=[]
-                with torch.no_grad():
-                    decoded_waveform = self.codec_model.decode(torch.as_tensor(codec_result.astype(np.int32), dtype=torch.long).unsqueeze(0).permute(1, 0, 2).to(self.device))
-                decoded_waveform = decoded_waveform.cpu().squeeze(0)
-                decodec_rlt.append(torch.as_tensor(decoded_waveform))
-                decodec_rlt = torch.cat(decodec_rlt, dim=-1)
-                save_path = os.path.join(recons_output_dir, os.path.splitext(os.path.basename(npy))[0] + ".mp3")
-                tracks.append(save_path)
-                save_audio(decodec_rlt, save_path, 16000)
-            # mix tracks
-            for inst_path in tracks:
-                try:
-                    if (inst_path.endswith('.wav') or inst_path.endswith('.mp3')) \
-                        and '_itrack' in inst_path:
-                        # find pair
-                        vocal_path = inst_path.replace('_itrack', '_vtrack')
-                        if not os.path.exists(vocal_path):
-                            continue
-                        # mix
-                        recons_mix = os.path.join(recons_mix_dir, os.path.basename(inst_path).replace('_itrack', '_mixed'))
-                        vocal_stem, sr = sf.read(inst_path)
-                        instrumental_stem, _ = sf.read(vocal_path)
-                        mix_stem = (vocal_stem + instrumental_stem) / 1
-                        sf.write(recons_mix, mix_stem, sr)
-                except Exception as e:
-                    print(e)
-
-            # vocoder to upsample audios
-            vocal_decoder, inst_decoder = build_codec_model(self.args.config_path, self.args.vocal_decoder_path, self.args.inst_decoder_path)
-            vocoder_output_dir = os.path.join(args_copy.output_dir, 'vocoder')
-            vocoder_stems_dir = os.path.join(vocoder_output_dir, 'stems')
-            vocoder_mix_dir = os.path.join(vocoder_output_dir, 'mix')
-            os.makedirs(vocoder_mix_dir, exist_ok=True)
-            os.makedirs(vocoder_stems_dir, exist_ok=True)
-            for npy in stage2_result["vocal_and_inst_save_path"]:
-                if '_itrack' in npy:
-                    # Process instrumental
-                    instrumental_output = process_audio(
-                        npy,
-                        os.path.join(vocoder_stems_dir, 'itrack.mp3'),
-                        self.args.rescale,
-                        args_copy,
-                        inst_decoder,
-                        self.codec_model
-                    )
-                else:
-                    # Process vocal
-                    vocal_output = process_audio(
-                        npy,
-                        os.path.join(vocoder_stems_dir, 'vtrack.mp3'),
-                        self.args.rescale,
-                        args_copy,
-                        vocal_decoder,
-                        self.codec_model
-                    )
-            # mix tracks
+        recons_output_dir = os.path.join(self.args.output_dir, "recons")
+        os.makedirs(recons_output_dir, exist_ok=True)
+        recons_stems_dir = os.path.join(recons_output_dir, 'stems')
+        os.makedirs(recons_stems_dir, exist_ok=True)
+        recons_mix_dir = os.path.join(recons_output_dir, 'mix')
+        os.makedirs(recons_mix_dir, exist_ok=True)
+        tracks = []
+        # stems tracks
+        for npy in stage2_result:
+            codec_result = np.load(npy)
+            decodec_rlt=[]
+            with torch.no_grad():
+                decoded_waveform = self.codec_model.decode(torch.as_tensor(codec_result.astype(np.int32), dtype=torch.long).unsqueeze(0).permute(1, 0, 2).to(self.device))
+            decoded_waveform = decoded_waveform.cpu().squeeze(0)
+            decodec_rlt.append(torch.as_tensor(decoded_waveform))
+            decodec_rlt = torch.cat(decodec_rlt, dim=-1)
+            save_path = os.path.join(recons_stems_dir, os.path.splitext(os.path.basename(npy))[0] + ".mp3")
+            tracks.append(save_path)
+            save_audio(decodec_rlt, save_path, 16000)
+        # mix tracks
+        for inst_path in tracks:
             try:
-                mix_output = instrumental_output + vocal_output
-                vocoder_mix = os.path.join(vocoder_mix_dir, os.path.basename(recons_mix))
-                save_audio(mix_output, vocoder_mix, 44100, self.args.rescale)
-                print(f"Created mix: {vocoder_mix}")
-            except RuntimeError as e:
+                if (inst_path.endswith('.wav') or inst_path.endswith('.mp3')) \
+                    and '_itrack' in inst_path:
+                    # find pair
+                    vocal_path = inst_path.replace('_itrack', '_vtrack')
+                    if not os.path.exists(vocal_path):
+                        continue
+                    # mix
+                    recons_mix = os.path.join(recons_mix_dir, os.path.basename(inst_path).replace('_itrack', '_mixed'))
+                    vocal_stem, sr = sf.read(inst_path)
+                    instrumental_stem, _ = sf.read(vocal_path)
+                    mix_stem = (vocal_stem + instrumental_stem) / 1
+                    sf.write(recons_mix, mix_stem, sr)
+            except Exception as e:
                 print(e)
-                print(f"mix {vocoder_mix} failed! inst: {instrumental_output.shape}, vocal: {vocal_output.shape}")
 
-            # Post process
-            replace_low_freq_with_energy_matched(
-                a_file=recons_mix,     # 16kHz
-                b_file=vocoder_mix,     # 48kHz
-                c_file=os.path.join(args_copy.output_dir, os.path.basename(recons_mix)),
-                cutoff_freq=5500.0
-            )
+        # vocoder to upsample audios
+        vocal_decoder, inst_decoder = build_codec_model(self.args.config_path, self.args.vocal_decoder_path, self.args.inst_decoder_path)
+        vocoder_output_dir = os.path.join(self.args.output_dir, 'vocoder')
+        vocoder_stems_dir = os.path.join(vocoder_output_dir, 'stems')
+        vocoder_mix_dir = os.path.join(vocoder_output_dir, 'mix')
+        os.makedirs(vocoder_mix_dir, exist_ok=True)
+        os.makedirs(vocoder_stems_dir, exist_ok=True)
+        for npy_inst in stage2_result:
+            if '_itrack' in npy_inst:
+                # Process instrumental
+                npy_vocal = npy_inst.replace('_itrack', '_vtrack')
+                if not os.path.exists(npy_vocal):
+                    continue
+                instrumental_output = process_audio(
+                    npy_inst,
+                    os.path.join(vocoder_stems_dir, os.path.splitext(os.path.basename(npy_inst))[0] + ".mp3"),
+                    self.args.rescale,
+                    self.args,
+                    inst_decoder,
+                    self.codec_model
+                )
+                vocal_output = process_audio(
+                    npy_vocal,
+                    os.path.join(vocoder_stems_dir, os.path.splitext(os.path.basename(npy_vocal))[0] + ".mp3"),
+                    self.args.rescale,
+                    self.args,
+                    vocal_decoder,
+                    self.codec_model
+                )
+                recons_mix = os.path.join(recons_mix_dir, os.path.splitext(os.path.basename(npy_inst))[0].replace('_itrack', '_mixed') + ".mp3")
+                vocoder_mix = os.path.join(vocoder_mix_dir, os.path.splitext(os.path.basename(npy_inst))[0].replace('_itrack', '_mixed') + ".mp3")
+                try:
+                    mix_output = instrumental_output + vocal_output
+                    #recons_mix = os.path.join(recons_mix_dir, os.path.splitext(os.path.basename(npy_inst))[0].replace('_itrack', '_mixed') + ".mp3")
+                    #vocoder_mix = os.path.join(vocoder_mix_dir, os.path.splitext(os.path.basename(npy_inst))[0].replace('_itrack', '_mixed') + ".mp3")
+                    save_audio(mix_output, vocoder_mix, 44100, self.args.rescale)
+                    print(f"Created mix: {vocoder_mix}")
+                except RuntimeError as e:
+                    print(e)
+                    print(f"mix {vocoder_mix} failed! inst: {instrumental_output.shape}, vocal: {vocal_output.shape}")
+                
+                # Post process
+                replace_low_freq_with_energy_matched(
+                    a_file=recons_mix,     # 16kHz
+                    b_file=vocoder_mix,     # 48kHz
+                    c_file=os.path.join(self.args.output_dir, os.path.basename(recons_mix)),
+                    cutoff_freq=5500.0
+                )            
+            else:
+                continue
+
 def split_lyrics(lyrics):
     pattern = r"\[(\w+)\](.*?)(?=\[|\Z)"
     segments = re.findall(pattern, lyrics, re.DOTALL)
@@ -698,10 +748,10 @@ def main():
     # 初始化处理器
     processor = BatchProcessor(args)
     
-    # 分批处理
-    for i in range(0, len(configs), args.request_batch_size):
-        batch = configs[i:i+args.request_batch_size] if i+args.request_batch_size < len(configs) else configs[i:]
-        processor.process_batch(batch)
+    # 批处理
+    #for i in range(0, len(configs), args.request_batch_size):
+    #    batch = configs[i:i+args.request_batch_size] if i+args.request_batch_size < len(configs) else configs[i:]
+    processor.process_batch(configs)
 
 if __name__ == "__main__":
     main()

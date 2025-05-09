@@ -1,0 +1,11 @@
+{
+    "genre_txt": "/map-vepfs/zhengxuan/yue/prompt_eg_2/genre.txt",
+    "lyrics_txt": "/map-vepfs/zhengxuan/yue/prompt_eg_2/lyrics.txt", 
+    "use_audio_prompt": true,
+    "audio_prompt_path": "/map-vepfs/zhengxuan/yue/prompt_eg_2/pop.00001.mp3", 
+    "prompt_start_time": 0.0, 
+    "prompt_end_time": 30.0, 
+    "use_dual_tracks_prompt": true,
+    "vocal_track_prompt_path": "/map-vepfs/zhengxuan/yue/prompt_eg_2/pop.00001.Vocals.mp3", 
+    "instrumental_track_prompt_path": "/map-vepfs/zhengxuan/yue/prompt_eg_2/pop.00001.Instrumental.mp3"
+ }

@@ -1,3 +1,41 @@
+from vllm.config import get_current_vllm_config
+from vllm.platforms import current_platform
+from vllm.model_executor.custom_op import CustomOp
+
+_original_forward = CustomOp.dispatch_forward
+
+def new_forward(self):
+    # NOTE(woosuk): Here we assume that vLLM was built for only one
+    # specific backend. Currently, we do not support dynamic dispatching.
+    compilation_config = get_current_vllm_config().compilation_config
+    enabled = self.enabled()
+    if enabled:
+        compilation_config.enabled_custom_ops.update([self.__class__.name])
+    else:
+        compilation_config.disabled_custom_ops.update(
+            [self.__class__.name])
+
+    if not enabled:
+        return self.forward_native
+
+    if current_platform.is_rocm():
+        return self.forward_hip
+    elif current_platform.is_cpu():
+        return self.forward_cpu
+    elif current_platform.is_hpu():
+        return self.forward_hpu
+    elif current_platform.is_tpu():
+        return self.forward_tpu
+    elif current_platform.is_xpu():
+        return self.forward_xpu
+    elif current_platform.is_neuron():
+        return self.forward_neuron
+    elif current_platform.is_out_of_tree():
+        return self.forward_oot
+    else:
+        return self.forward_native
+
+CustomOp.dispatch_forward = new_forward
 
 import os
 import sys
@@ -29,7 +67,6 @@ from mmtokenizer import _MMSentencePieceTokenizer
 from models.soundstream_hubert_new import SoundStream
 from vocoder import build_codec_model, process_audio
 from post_process_audio import replace_low_freq_with_energy_matched
-
 
 parser = argparse.ArgumentParser()
 # Model Configuration:
@@ -162,6 +199,8 @@ full_lyrics = "\n".join(lyrics)
 prompt_texts = [f"Generate music from the given lyrics segment by segment.\n[Genre] {genres}\n{full_lyrics}"]
 prompt_texts += lyrics
 
+with open('output_infer_vllm_with_audio.txt', 'a') as f:
+    print(f"the whole prompt texts: {prompt_texts}\n",file=f) 
 
 random_id = uuid.uuid4()
 output_seq = None
@@ -199,6 +238,10 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
     section_text = p.replace('[start_of_segment]', '').replace('[end_of_segment]', '')
     if i==0:
         continue
+
+    with open('output_infer_vllm_with_audio.txt', 'a') as f:
+        print(f"the prompt texts for segment {i}: {section_text}\n",file=f)
+
     if i==1:
         if args.use_dual_tracks_prompt or args.use_audio_prompt:
             if args.use_dual_tracks_prompt:
@@ -217,6 +260,10 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
                 # Format audio prompt
                 code_ids = codectool.npy2ids(raw_codes[0])
                 audio_prompt_codec = code_ids[int(args.prompt_start_time *50): int(args.prompt_end_time *50)] # 50 is tps of xcodec
+            
+            with open('output_infer_vllm_with_audio.txt', 'a') as f:
+                print(f"audio_prompt_codec_ids for segment {i}: {audio_prompt_codec}\n",file=f)
+
             audio_prompt_codec_ids = [mmtokenizer.soa] + codectool.sep_ids + audio_prompt_codec + [mmtokenizer.eoa]
             sentence_ids = mmtokenizer.tokenize("[start_of_reference]") +  audio_prompt_codec_ids + mmtokenizer.tokenize("[end_of_reference]")
             head_id = mmtokenizer.tokenize(prompt_texts[0]) + sentence_ids
@@ -225,8 +272,14 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
         prompt_ids = head_id + start_of_segment + mmtokenizer.tokenize(section_text) + [mmtokenizer.soa] + codectool.sep_ids
     else:
         prompt_ids = end_of_segment + start_of_segment + mmtokenizer.tokenize(section_text) + [mmtokenizer.soa] + codectool.sep_ids
+    
+    with open('output_infer_vllm_with_audio.txt', 'a') as f:
+        print(f"prompt_ids for segment {i}: {prompt_ids}\n",file=f)
 
     input_ids = raw_output + prompt_ids if i > 1 else prompt_ids
+
+    with open('output_infer_vllm_with_audio.txt', 'a') as f:
+        print(f"input_ids for segment {i}: {input_ids}\n",file=f)
 
     # Use window slicing in case output sequence exceeds the context of model
     max_context = 16384-max_new_tokens-1
@@ -271,6 +324,9 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
         raw_output = raw_output + prompt_ids + output_seq
     else:
         raw_output = prompt_ids + output_seq
+
+    with open('output_infer_vllm_with_audio.txt', 'a') as f:
+        print(f"raw_output for segment {i}: {raw_output}\n",file=f)
 
 # save raw output and check sanity
 ids = np.array(raw_output)
