@@ -199,8 +199,8 @@ full_lyrics = "\n".join(lyrics)
 prompt_texts = [f"Generate music from the given lyrics segment by segment.\n[Genre] {genres}\n{full_lyrics}"]
 prompt_texts += lyrics
 
-with open('output_infer_vllm_with_audio.txt', 'a') as f:
-    print(f"the whole prompt texts: {prompt_texts}\n",file=f) 
+#with open('output_infer_vllm_with_dual.txt', 'a') as f:
+#    print(f"the whole prompt texts: {prompt_texts}\n",file=f) 
 
 random_id = uuid.uuid4()
 output_seq = None
@@ -239,8 +239,8 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
     if i==0:
         continue
 
-    with open('output_infer_vllm_with_audio.txt', 'a') as f:
-        print(f"the prompt texts for segment {i}: {section_text}\n",file=f)
+    #with open('output_infer_vllm_with_dual.txt', 'a') as f:
+    #    print(f"the prompt texts for segment {i}: {section_text}\n",file=f)
 
     if i==1:
         if args.use_dual_tracks_prompt or args.use_audio_prompt:
@@ -261,8 +261,8 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
                 code_ids = codectool.npy2ids(raw_codes[0])
                 audio_prompt_codec = code_ids[int(args.prompt_start_time *50): int(args.prompt_end_time *50)] # 50 is tps of xcodec
             
-            with open('output_infer_vllm_with_audio.txt', 'a') as f:
-                print(f"audio_prompt_codec_ids for segment {i}: {audio_prompt_codec}\n",file=f)
+            #with open('output_infer_vllm_with_dual.txt', 'a') as f:
+            #    print(f"audio_prompt_codec_ids for segment {i}: {audio_prompt_codec}\n",file=f)
 
             audio_prompt_codec_ids = [mmtokenizer.soa] + codectool.sep_ids + audio_prompt_codec + [mmtokenizer.eoa]
             sentence_ids = mmtokenizer.tokenize("[start_of_reference]") +  audio_prompt_codec_ids + mmtokenizer.tokenize("[end_of_reference]")
@@ -273,13 +273,13 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
     else:
         prompt_ids = end_of_segment + start_of_segment + mmtokenizer.tokenize(section_text) + [mmtokenizer.soa] + codectool.sep_ids
     
-    with open('output_infer_vllm_with_audio.txt', 'a') as f:
-        print(f"prompt_ids for segment {i}: {prompt_ids}\n",file=f)
+    #with open('output_infer_vllm_with_dual.txt', 'a') as f:
+    #    print(f"prompt_ids for segment {i}: {prompt_ids}\n",file=f)
 
     input_ids = raw_output + prompt_ids if i > 1 else prompt_ids
 
-    with open('output_infer_vllm_with_audio.txt', 'a') as f:
-        print(f"input_ids for segment {i}: {input_ids}\n",file=f)
+    #with open('output_infer_vllm_with_dual.txt', 'a') as f:
+    #    print(f"input_ids for segment {i}: {input_ids}\n",file=f)
 
     # Use window slicing in case output sequence exceeds the context of model
     max_context = 16384-max_new_tokens-1
@@ -320,13 +320,17 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
         output_seq = list(batch_output[0].outputs[0].token_ids)
         if output_seq[-1] != mmtokenizer.eoa:
             output_seq.append(mmtokenizer.eoa)
+
+        #with open('output_infer_vllm_with_dual.txt', 'a') as f:
+        #    print(f"output_seq for segment {i}: {output_seq}\n",file=f)
+
     if i > 1:
         raw_output = raw_output + prompt_ids + output_seq
     else:
         raw_output = prompt_ids + output_seq
 
-    with open('output_infer_vllm_with_audio.txt', 'a') as f:
-        print(f"raw_output for segment {i}: {raw_output}\n",file=f)
+    #with open('output_infer_vllm_with_dual.txt', 'a') as f:
+    #    print(f"raw_output for segment {i}: {raw_output}\n",file=f)
 
 # save raw output and check sanity
 ids = np.array(raw_output)

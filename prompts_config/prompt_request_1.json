@@ -1,4 +1,6 @@
 {
    "genre_txt": "/map-vepfs/zhengxuan/yue/prompt_egs/genre.txt",
-   "lyrics_txt": "/map-vepfs/zhengxuan/yue/prompt_egs/lyrics.txt"
+   "lyrics_txt": "/map-vepfs/zhengxuan/yue/prompt_egs/lyrics.txt",
+   "use_audio_prompt": true,
+   "audio_prompt_path": "/map-vepfs/zhengxuan/yue/prompt_egs/pop.00001.mp3"
 }

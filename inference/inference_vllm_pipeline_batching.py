@@ -141,6 +141,7 @@ class BatchProcessor:
         self.codec_model = eval(model_config.generator.name)(**model_config.generator.config).to(self.device)
         parameter_dict = torch.load(self.args.resume_path, map_location='cpu', weights_only=False)
         self.codec_model.load_state_dict(parameter_dict['codec_model'])
+        self.codec_model.to(self.device)
         self.codec_model.eval()
 
     def process_batch(self, batch_configs):
@@ -164,12 +165,12 @@ class BatchProcessor:
         self.stage1_model = LLM(
             model=self.args.stage1_model, 
             dtype=torch.bfloat16, 
-            enable_chunked_prefill=True, 
-            max_num_batched_tokens=4096, 
-            max_model_len=16384, 
-            enforce_eager=True,      # 禁用Ray异步执行
+            #enable_chunked_prefill=True, 
+            #max_num_batched_tokens=4096, 
+            #max_model_len=16384, 
+            #enforce_eager=True,      # 禁用Ray异步执行
             tensor_parallel_size=1,  # 禁用分布式
-            gpu_memory_utilization=0.9,   # 显存利用率调整
+            gpu_memory_utilization=0.9  # 显存利用率调整
         )
         
         outputs = []
@@ -190,7 +191,7 @@ class BatchProcessor:
             min_tokens=100,
             max_tokens=self.max_new_tokens,
             stop_token_ids=[self.mmtokenizer.eoa],
-            guidance_scale=1
+            guidance_scale=1.5
         )
 
         #run_n_segments = min(self.args.run_n_segments, len(lyrics))+1
@@ -214,24 +215,24 @@ class BatchProcessor:
                 prompt_texts = self._build_prompts(lyrics, genres)
                 #audio_prompt = self._process_audio_prompt(args_copy)
 
-                if i==1:
-                    with open('output_infer_vllm_batching_2.txt', 'a') as f:
-                        print(f"the whole prompt texts for request {idx}: {prompt_texts}\n",file=f) 
+                #if i==1:
+                #    with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                #        print(f"the whole prompt texts for request {idx}: {prompt_texts}\n",file=f) 
 
                 p = prompt_texts[i]
 
                 # 构建当前segment的prompt
                 section_text = p.replace('[start_of_segment]', '').replace('[end_of_segment]', '')
 
-                with open('output_infer_vllm_batching_2.txt', 'a') as f:
-                    print(f"the prompt texts for request {idx} , segment {i}: {section_text}\n",file=f)
+                #with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                #    print(f"the prompt texts for request {idx} , segment {i}: {section_text}\n",file=f)
 
                 if i == 1:
                     if args_copy.use_audio_prompt or args_copy.use_dual_tracks_prompt:
                         audio_prompt = self._process_audio_prompt(args_copy)
 
-                        with open('output_infer_vllm_batching_2.txt', 'a') as f:
-                            print(f"audio_prompt_codec_ids {idx} for segment {i}: {audio_prompt}\n",file=f)
+                        #with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                        #    print(f"audio_prompt_codec_ids {idx} for segment {i}: {audio_prompt}\n",file=f)
                         
                         prompt_ids = (
                             self.mmtokenizer.tokenize(prompt_texts[0]) +
@@ -246,17 +247,17 @@ class BatchProcessor:
                 else:
                     prompt_ids = end_of_segment + start_of_segment + self.mmtokenizer.tokenize(section_text) + [soa_token] + self.codectool.sep_ids
                 
-                with open('output_infer_vllm_batching_2.txt', 'a') as f:
-                    print(f"prompt_ids idx {idx} for segment {i}: {prompt_ids}\n",file=f)
+                #with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                #    print(f"prompt_ids idx {idx} for segment {i}: {prompt_ids}\n",file=f)
 
                 prompt_ids_list.append(prompt_ids)
                 # 上下文窗口管理
-                #max_context = 16384 - self.args.max_new_tokens - 1
-                max_context = 32768 - self.args.max_new_tokens - 1
+                max_context = 16384 - self.args.max_new_tokens - 1
+                #max_context = 32768 - self.args.max_new_tokens - 1
                 input_ids = raw_output_list[idx] + prompt_ids if i > 1 else prompt_ids
 
-                with open('output_infer_vllm_batching_2.txt', 'a') as f:
-                    print(f"input_ids idx {idx} for segment {i}: {input_ids}\n",file=f)
+                #with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                #    print(f"input_ids idx {idx} for segment {i}: {input_ids}\n",file=f)
 
                 if len(input_ids) > max_context:
                     print(f'Section {i}: output length {len(input_ids)} exceeding context length {max_context}, now using the last {max_context} tokens.')
@@ -264,6 +265,11 @@ class BatchProcessor:
                 
                 input_ids_list.append(input_ids)
 
+                #vocab_size = self.mmtokenizer.vocab_size
+                #invalid_ids = [id for id in output_seq if id >= vocab_size]
+                #if invalid_ids:
+                #    raise ValueError(f"输入当中有越界的Token IDs: {invalid_ids},上界限为{vocab_size}.")
+            
             # 生成逻辑
             p = []
             for input_ids in input_ids_list:
@@ -279,7 +285,7 @@ class BatchProcessor:
                         min_tokens=100,
                         max_tokens=self.max_new_tokens,
                         stop_token_ids=[self.mmtokenizer.eoa],
-                        guidance_scale=1.0
+                        guidance_scale=1.5
                     )
             else:
                 sampling_params = SamplingParams(
@@ -290,7 +296,7 @@ class BatchProcessor:
                         min_tokens=100,
                         max_tokens=self.max_new_tokens,
                         stop_token_ids=[self.mmtokenizer.eoa],
-                        guidance_scale=1.0
+                        guidance_scale=1.2
                     )
             with torch.no_grad():
                 #print(f"Start generating for segment {i}") 
@@ -305,6 +311,13 @@ class BatchProcessor:
                 for output_seq in output_seq_list:
                     if output_seq[-1] != eoa_token:
                         output_seq.append(eoa_token)
+
+                    #with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                    #    print(f"output_seq idx {idx} for segment {i}: {output_seq}\n",file=f)
+                    #vocab_size = self.mmtokenizer.vocab_size
+                    #invalid_ids = [id for id in output_seq if id >= vocab_size]
+                    #if invalid_ids:
+                    #    raise ValueError(f"生成非法Token IDs: {invalid_ids},上界限为{vocab_size}.")
 
                 if len(output_seq_list) != len(batch_configs):
                     raise ValueError(f"num of outputs: {len(output_seq_list)} doesn't match num of requests: {len(batch_configs)}")
@@ -324,8 +337,8 @@ class BatchProcessor:
                     raw_output_list[idx] = current_prompt + current_output    
                 
                 raw_output_temp = raw_output_list[idx]
-                with open('output_infer_vllm_batching_2.txt', 'a') as f:
-                    print(f"raw_output idx {idx} for segment {i}: {raw_output_temp}\n",file=f)
+                #with open('output_infer_vllm_batching_audio_dual_2.txt', 'a') as f:
+                #    print(f"raw_output idx {idx} for segment {i}: {raw_output_temp}\n",file=f)
 
         # 解析生成的代码
         stage1_output_dir = os.path.join(self.args.output_dir, f"stage1")
@@ -436,8 +449,8 @@ class BatchProcessor:
             audio_prompt_codec = self._interleave_tracks(vocals, instrumental, args)
         elif args.use_audio_prompt:
             #return self._encode_single_audio(args)
-            raw_codes = self._encode_audio(args.audio_prompt_path, args)
-            code_ids = self.codectool.npy2ids(raw_codes[0])
+            code_ids = self._encode_audio(args.audio_prompt_path, args)
+            #code_ids = self.codectool.npy2ids(raw_codes[0])
             audio_prompt_codec = code_ids[int(args.prompt_start_time*50*2): int(args.prompt_end_time*50*2)]
         return audio_prompt_codec
 
@@ -445,7 +458,7 @@ class BatchProcessor:
         audio_prompt = load_audio_mono(path)
         device = torch.device(f"cuda:{args.cuda_idx}" if torch.cuda.is_available() else "cpu")
         if len(audio_prompt.shape)<3:
-            audio_prompt = audio_prompt.unsqueeze_(0)
+            audio_prompt.unsqueeze_(0)
         with torch.no_grad():
             raw_codes = self.codec_model.encode(audio_prompt.to(device), target_bw=target_bw)
         raw_codes = raw_codes.transpose(0, 1)
@@ -458,12 +471,12 @@ class BatchProcessor:
         self.stage2_model = LLM(
             model=self.args.stage2_model, 
             dtype=torch.bfloat16,
-            enable_chunked_prefill=True,
-            max_num_batched_tokens=4096,
-            max_model_len=8192,
+            #enable_chunked_prefill=True,
+            #max_num_batched_tokens=4096,
+            #max_model_len=8192,
             #disable_distributed_init=True,  # 显式禁用分布式初始化
             #worker_use_ray=False,  # 彻底禁用Ray
-            enforce_eager=True,      # 禁用Ray异步执行
+            #enforce_eager=True,      # 禁用Ray异步执行
             tensor_parallel_size=1,  # 禁用分布式
             gpu_memory_utilization=0.9,   # 显存利用率调整
             disable_custom_all_reduce=True 
@@ -716,12 +729,14 @@ def split_lyrics(lyrics):
     segments = re.findall(pattern, lyrics, re.DOTALL)
     return [f"[{seg[0]}]\n{seg[1].strip()}\n\n" for seg in segments]
 
-def load_audio_mono(filepath, sr=16000):
-    audio, orig_sr = torchaudio.load(filepath)
+def load_audio_mono(filepath, sampling_rate=16000):
+    audio, sr = torchaudio.load(filepath)
+    # Convert to mono
     audio = torch.mean(audio, dim=0, keepdim=True)
-    if orig_sr != sr:
-        resample = Resample(orig_freq=sr, new_freq=sr)
-        audio = resample(audio)
+    # Resample if needed
+    if sr != sampling_rate:
+        resampler = Resample(orig_freq=sr, new_freq=sampling_rate)
+        audio = resampler(audio)
     return audio
 
     # convert audio tokens to audio

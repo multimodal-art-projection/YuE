@@ -205,16 +205,41 @@ python infer.py \
 ### VLLM inference
 ```
 # install modified vllm with classifier free guidance
-cd vllm
-VLLM_USE_PRECOMPILED=1 pip install --editable .
+pip install vllm==0.8.1
+then modify your loacl vllm repo follwing there (https://github.com/MSLDCherryPick/vllm).
 
 
 # Inference with VLLM
 cd inference
 bash inference_vllm.sh
+
+there is also an example with dual track prompt:
+bash inference_vllm_dual_track.sh
+```
+
+### VLLM Batching inference
+```
+
+# Batching Inference with VLLM
+cd inference
+bash inference_vllm_batching.sh
+
+inference_vllm_pipeline can support computing many prompt requests in a batch.When executing inference_vllm_pipeline_batching.py, there are two extra parameters you need to specify in the script:
+--request_batch_size : the number of requests you want to compute in a batch --prompts_config_path : the directory which contains <request_batch_size> json file, each json file corresponds to the prompt config of a request.In such a json file, you are supported to specify the following parameters for a prompt request independently:
+--genre_txt
+--lyrics_txt
+--use_audio_prompt : true/fasle
+--audio_prompt_path
+--prompt_start_time
+--prompt_end_time
+--use_dual_tracks_prompt : true/false 
+--vocal_track_prompt_path
+--instrumental_track_prompt_path
+When you specify above parameters in the json file, thess parameters will replace the args specified in bash script when processing input_token_ids of the prompt corresponding to this json file.
+
 ```
 ---
- 
+
 ## Prompt Engineering Guide
 The prompt consists of three parts: genre tags, lyrics, and ref audio.
 
