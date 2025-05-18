@@ -12,7 +12,7 @@ print_help() {
   echo "Before running this script, please update the following variables:"
   echo ""
   echo "1. Data paths:"
-  echo "   DATA_PATH - Replace <path_to_data_X> with actual paths to your data files"
+  echo "   DATA_PATH - Replace <weight_and_path_to_data_X> with actual weights and data paths"
   echo "   DATA_CACHE_PATH - Replace <path_to_data_cache> with actual cache directory"
   echo ""
   echo "2. Model configuration:"
@@ -24,7 +24,7 @@ print_help() {
   echo "   WANDB_API_KEY - Replace <your_wandb_api_key> with your actual API key"
   echo ""
   echo "Example usage:"
-  echo "  DATA_PATH=\"/path/to/data1 /path/to/data2\""
+  echo "  DATA_PATH=\"data1-weight /path/to/data1 data2-weight /path/to/data2\""
   echo "  DATA_CACHE_PATH=\"/path/to/cache\""
   echo "  TOKENIZER_MODEL_PATH=\"/path/to/tokenizer\""
   echo "  MODEL_CACHE_DIR=\"/path/to/model/cache\""
@@ -44,7 +44,7 @@ check_placeholders() {
   local has_placeholders=false
   
   if [[ "$DATA_PATH" == *"<weight_and_path_to_data"* ]]; then
-    echo "Error: Please set actual data paths in DATA_PATH variable."
+    echo "Error: Please set actual weight and data paths in DATA_PATH variable."
     has_placeholders=true
   fi
   
