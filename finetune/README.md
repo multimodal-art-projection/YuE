@@ -95,7 +95,7 @@ cd finetune/
 
 2. Run the token counting script:
 ```bash
-bash scripts/count_tokens.sh
+bash scripts/count_tokens.sh ./example/mmap/
 ```
 
 The results will be saved in `finetune/count_token_logs/`. This process may take several minutes for large datasets.
@@ -129,13 +129,20 @@ YuE supports finetuning using LoRA (Low-Rank Adaptation), which significantly re
 
 ```bash
 # Update data paths
-DATA_PATH="/path/to/your/data1 /path/to/your/data2"
+# Accepted formats for DATA_PATH:
+#   1) a single path: "/path/to/data"
+#   2) multiple datasets with weights: "100 /path/to/data1 200 /path/to/data2 ..."
+# You can copy DATA_PATH from the output of core/parse_mixture.py in Step 2
+DATA_PATH="data1-weight /path/to/data1 data2-weight /path/to/data2"
 DATA_CACHE_PATH="/path/to/your/cache"
+
+# Set comma-separated list of proportions for train/val/test split
+DATA_SPLIT="900,50,50"
 
 # Set model paths
 TOKENIZER_MODEL_PATH="/path/to/tokenizer"
 MODEL_NAME="m-a-p/YuE-s1-7B-anneal-en-cot"  # or your local model path
-CACHE_DIR="/path/to/model/cache"
+MODEL_CACHE_DIR="/path/to/model/cache"
 OUTPUT_DIR="/path/to/save/finetuned/model"
 
 # Configure LoRA parameters (optional)

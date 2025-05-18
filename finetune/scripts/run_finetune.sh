@@ -43,7 +43,7 @@ fi
 check_placeholders() {
   local has_placeholders=false
   
-  if [[ "$DATA_PATH" == *"<path_to_data"* ]]; then
+  if [[ "$DATA_PATH" == *"<weight_and_path_to_data"* ]]; then
     echo "Error: Please set actual data paths in DATA_PATH variable."
     has_placeholders=true
   fi
@@ -113,8 +113,11 @@ TRAIN_ITERS=150
 NUM_TRAIN_EPOCHS=10
 
 # Data paths (replace with your actual paths)
-DATA_PATH="<path_to_data_X>"
+DATA_PATH="<weight_and_path_to_data_X>"     
 DATA_CACHE_PATH="<path_to_tokenizer_model>"
+
+# Set comma-separated list of proportions for training, validation, and test split
+DATA_SPLIT="900,50,50"
 
 # Model configuration
 TOKENIZER_MODEL_PATH="<path_to_tokenizer_model>"
@@ -166,6 +169,7 @@ CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT scripts/trai
     --seq-length $SEQ_LENGTH \
     --data-path $DATA_PATH \
     --data-cache-path $DATA_CACHE_PATH \
+    --split $DATA_SPLIT \
     --tokenizer-model $TOKENIZER_MODEL_PATH \
     --global-batch-size $GLOBAL_BATCH_SIZE \
     --per-device-train-batch-size $PER_DEVICE_TRAIN_BATCH_SIZE \
@@ -179,6 +183,8 @@ CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT scripts/trai
 # Add conditional arguments
 if [ "$USE_WANDB" = true ]; then
     CMD="$CMD --report-to wandb --run-name \"$RUN_NAME\""
+elif [ "$USE_WANDB" = false ]; then
+    CMD="$CMD --report-to none"
 fi
 
 CMD="$CMD \
