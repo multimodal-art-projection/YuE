@@ -165,3 +165,5 @@ output
 inference/xcodec_mini_infer
 inference/run_infer.sh
 finetune/wandb
+*.bin
+*.idx
