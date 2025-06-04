@@ -12,7 +12,7 @@ print_help() {
   echo "Before running this script, please update the following variables:"
   echo ""
   echo "1. Data paths:"
-  echo "   DATA_PATH - Replace <path_to_data_X> with actual paths to your data files"
+  echo "   DATA_PATH - Replace <weight_and_path_to_data_X> with actual weights and data paths"
   echo "   DATA_CACHE_PATH - Replace <path_to_data_cache> with actual cache directory"
   echo ""
   echo "2. Model configuration:"
@@ -24,7 +24,7 @@ print_help() {
   echo "   WANDB_API_KEY - Replace <your_wandb_api_key> with your actual API key"
   echo ""
   echo "Example usage:"
-  echo "  DATA_PATH=\"/path/to/data1 /path/to/data2\""
+  echo "  DATA_PATH=\"data1-weight /path/to/data1 data2-weight /path/to/data2\""
   echo "  DATA_CACHE_PATH=\"/path/to/cache\""
   echo "  TOKENIZER_MODEL_PATH=\"/path/to/tokenizer\""
   echo "  MODEL_CACHE_DIR=\"/path/to/model/cache\""
@@ -43,8 +43,8 @@ fi
 check_placeholders() {
   local has_placeholders=false
   
-  if [[ "$DATA_PATH" == *"<path_to_data"* ]]; then
-    echo "Error: Please set actual data paths in DATA_PATH variable."
+  if [[ "$DATA_PATH" == *"<weight_and_path_to_data"* ]]; then
+    echo "Error: Please set actual weight and data paths in DATA_PATH variable."
     has_placeholders=true
   fi
   
@@ -113,8 +113,11 @@ TRAIN_ITERS=150
 NUM_TRAIN_EPOCHS=10
 
 # Data paths (replace with your actual paths)
-DATA_PATH="<path_to_data_X>"
+DATA_PATH="<weight_and_path_to_data_X>"     
 DATA_CACHE_PATH="<path_to_tokenizer_model>"
+
+# Set comma-separated list of proportions for training, validation, and test split
+DATA_SPLIT="900,50,50"
 
 # Model configuration
 TOKENIZER_MODEL_PATH="<path_to_tokenizer_model>"
@@ -166,6 +169,7 @@ CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT scripts/trai
     --seq-length $SEQ_LENGTH \
     --data-path $DATA_PATH \
     --data-cache-path $DATA_CACHE_PATH \
+    --split $DATA_SPLIT \
     --tokenizer-model $TOKENIZER_MODEL_PATH \
     --global-batch-size $GLOBAL_BATCH_SIZE \
     --per-device-train-batch-size $PER_DEVICE_TRAIN_BATCH_SIZE \
@@ -179,6 +183,8 @@ CMD="torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT scripts/trai
 # Add conditional arguments
 if [ "$USE_WANDB" = true ]; then
     CMD="$CMD --report-to wandb --run-name \"$RUN_NAME\""
+elif [ "$USE_WANDB" = false ]; then
+    CMD="$CMD --report-to none"
 fi
 
 CMD="$CMD \
