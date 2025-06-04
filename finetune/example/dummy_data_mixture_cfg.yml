@@ -1,0 +1,10 @@
+TOKEN_COUNT_LOG_DIR: ./count_token_logs
+GLOBAL_BATCH_SIZE: 8
+SEQ_LEN: 8192
+
+1_ROUND:
+  - ./example/mmap/dummy.msa.xcodec_16k_stage_1_token_level_interleave_cot_xcodec_textfirst_text_document.bin
+  - ./example/mmap/dummy.msa.xcodec_16k_stage_1_token_level_interleave_long_prompt_msa_textfirst_dual_text_document.bin
+  - ./example/mmap/dummy.msa.xcodec_16k_stage_1_token_level_interleave_long_prompt_msa_textfirst_inst_text_document.bin
+  - ./example/mmap/dummy.msa.xcodec_16k_stage_1_token_level_interleave_long_prompt_msa_textfirst_mixture_text_document.bin
+  - ./example/mmap/dummy.msa.xcodec_16k_stage_1_token_level_interleave_long_prompt_msa_textfirst_vocal_text_document.bin
