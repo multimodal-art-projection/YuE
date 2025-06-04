@@ -41,13 +41,14 @@ YuE is a groundbreaking series of open-source foundation models designed for mus
 
 ---
 ## TODOs📋
-- [ ] Example finetune code for enabling BPM control using 🤗 Transformers.
+
 - [ ] Support stemgen mode https://github.com/multimodal-art-projection/YuE/issues/21
 - [ ] Support llama.cpp https://github.com/ggerganov/llama.cpp/issues/11467
 - [ ] Support transformers tensor parallel. https://github.com/multimodal-art-projection/YuE/issues/7
 - [ ] Online serving on huggingface space.
-- [x] Release paper to Arxiv.
 - [ ] Support vLLM and sglang https://github.com/multimodal-art-projection/YuE/issues/66
+- [x] Release paper to Arxiv.
+- [x] Example LoRA finetune code using 🤗 Transformers.
 - [x] Support Colab: [YuE-extend by Mozer](https://github.com/Mozer/YuE-extend)
 - [x] Support gradio interface. https://github.com/multimodal-art-projection/YuE/issues/1
 - [x] Support dual-track ICL mode.
