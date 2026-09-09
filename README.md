@@ -145,13 +145,25 @@ Try a concrete request:
 
 | System / setting | SongBench Avg ↑ | AudioBox PQ ↑ | MuLan ↑ | PER ↓ |
 |---|---:|---:|---:|---:|
-| YuE 1 | 4.9165 | 7.8683 | 0.2623 | 36.38% |
-| Suno v5 | 6.8721 | 8.1698 | **0.5428** | **8.10%** |
+| **YuE2 (best-of-8)** † | **6.9632** | 8.2714 | 0.5051 | 9.79% |
 | Mureka 9 | 6.9377 | 8.0226 | 0.4394 | 11.69% |
-| **YuE2** | 6.7316 | 8.2598 | 0.5068 | 8.44% |
-| **YuE2 (best-of-8)** | **6.9632** | **8.2714** | 0.5051 | 9.79% |
+| Suno v5 | 6.8721 | 8.1698 | **0.5428** | 8.10% |
+| **YuE2** † | 6.7316 | 8.2598 | 0.5068 | 8.44% |
+| Suno v5.5 | 6.7150 | 8.1955 | 0.5089 | 5.96% |
+| Suno v4.5 | 6.6995 | 8.2541 | 0.5022 | **5.80%** |
+| LeVo 2 † | 6.3247 | **8.3966** | 0.3542 | 26.12% |
+| MiniMax Music 2.6 | 6.3222 | 8.1711 | 0.4251 | 24.55% |
+| MiniMax Music 3 † | 6.2830 | 8.2825 | 0.3928 | 6.27% |
+| HeartMuLa † | 6.2483 | 8.2933 | 0.3823 | 10.71% |
+| Muse † | 6.0349 | 8.0517 | 0.3937 | 33.42% |
+| ACE-Step 1.5 † | 6.0118 | 8.0518 | 0.4372 | 7.46% |
+| DiffRhythm 2 † | 5.2428 | 7.9782 | 0.3782 | 18.41% |
+| YuE 1 † | 4.9165 | 7.8683 | 0.2623 | 36.38% |
+| SongBloom † | 4.2350 | 8.1539 | 0.2697 | 19.19% |
 
-Both YuE2 settings use symbolic planning and the benchmark decoder, **YuE2-Vae-legacy**. Standard YuE2 selects from two candidates; best-of-8 selects from eight. The full comparison contains 15 settings. Rankings vary by metric; the small gap between the highest means does not establish statistical significance. [Full results and selection protocols](docs/benchmarks.md).
+† Publicly available model weights. All 15 evaluated settings are shown, sorted by SongBench Avg; bold values mark the best result in each column.
+
+Both YuE2 settings use symbolic planning and the benchmark decoder, **YuE2-Vae-legacy**. Standard YuE2 selects from two candidates; best-of-8 selects from eight. Rankings vary by metric; the small gap between the highest means does not establish statistical significance. [Full results and selection protocols](docs/benchmarks.md).
 
 **Zero-shot covers.** On 948 works, full-score YuE2 reaches **0.647 CLEWS mAP**, compared with **0.006 without a score**, while using the general generator without cover-specific fine-tuning. Source-identity preservation and target-style quality are measured separately; melody-only covers offer more freedom to change the arrangement. [Cover evaluation](docs/benchmarks.md#zero-shot-cover-generation).
 

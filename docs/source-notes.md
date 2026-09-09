@@ -2,7 +2,7 @@
 
 The README's frontier figure and architecture figure are reproduced from the [YuE2 demo page](https://map-yue2.github.io/#model-overview). The logo is the original project's logo, preserved from [YuE-v1](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1/assets/logo). PNG text, timestamp, and EXIF metadata were removed where present; image pixels were preserved. These figures and original example inputs are documentation assets, not generated evaluation audio.
 
-The [WSB CSV](benchmark-results.csv) is the September 5, 2026 result set displayed on the demo page. The README presents selected comparison rows; the CSV contains all 15 settings. Benchmark scope and selection are recorded in [benchmarks.md](benchmarks.md).
+The [WSB CSV](benchmark-results.csv) is the September 5, 2026 result set displayed on the demo page. The README presents all 15 settings for four metrics; the CSV retains the complete metric set. Benchmark scope and selection are recorded in [benchmarks.md](benchmarks.md).
 
 ## Citation verification
 
