@@ -1,18 +1,18 @@
-YuE2 source code and agent skill license
+YuE2 Music skill license
 
 Copyright (c) 2026 the YuE2 authors.
 
-The original YuE2 source code, agent skill and documentation in this release
-are licensed under Creative Commons Attribution-NonCommercial 4.0 International
+The original instructions, helper scripts and templates in this skill are
+licensed under Creative Commons Attribution-NonCommercial 4.0 International
 (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/
 
 For attribution, identify YuE2 and its source repository:
 https://github.com/multimodal-art-projection/YuE
 
-Third-party components retain their original licenses. See
-THIRD_PARTY_NOTICES.md and licenses/. Model checkpoint weights are separately
-covered by MODEL_LICENSE. Historical YuE v1 material on the YuE-v1 branch
-retains its existing licenses.
+This skill does not bundle model weights or third-party dependencies.
+Models, installed libraries and renderers retain their applicable licenses.
+See the respective model cards and the source repository's notices:
+https://github.com/multimodal-art-projection/YuE/blob/main/THIRD_PARTY_NOTICES.md
 
 The official license text follows without modification.
 Source: https://creativecommons.org/licenses/by-nc/4.0/legalcode.txt
@@ -424,4 +424,3 @@ the avoidance of doubt, this paragraph does not form part of the
 public licenses.
 
 Creative Commons may be contacted at creativecommons.org.
-
