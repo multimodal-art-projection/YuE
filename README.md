@@ -14,6 +14,8 @@
   <a href="#quick-start">🚀 Quick start</a> ·
   <a href="#agent-skill">🤖 Agent skill</a> ·
   <a href="#benchmarks">📊 Benchmarks</a> ·
+  <a href="#mert2">MERT2</a> ·
+  <a href="#sheetsage2">SheetSage2</a> ·
   <a href="https://github.com/multimodal-art-projection/YuE/releases/tag/yue2-v0.1.6">📦 Release</a> ·
   <a href="https://discord.gg/ssAyWMnMzu">Discord</a>
 </p>
@@ -166,6 +168,18 @@ Try a concrete request:
 Both YuE2 settings use symbolic planning and the benchmark decoder, **YuE2-Vae-legacy**. Standard YuE2 selects from two candidates; best-of-8 selects from eight. Rankings vary by metric; the small gap between the highest means does not establish statistical significance. [Full results and selection protocols](docs/benchmarks.md).
 
 **Zero-shot covers.** On 948 works, full-score YuE2 reaches **0.647 CLEWS mAP**, compared with **0.006 without a score**, while using the general generator without cover-specific fine-tuning. Source-identity preservation and target-style quality are measured separately; melody-only covers offer more freedom to change the arrangement. [Cover evaluation](docs/benchmarks.md#zero-shot-cover-generation).
+
+## MERT2
+
+**State-of-the-art music understanding:** SOTA on **14 of 15 MARBLE metrics**, with **91.72% genre accuracy on GTZAN**.
+
+[Demo and results](https://map-yue2.github.io/#mert2) · [MERT2-30s](https://huggingface.co/m-a-p/MERT-v2-30s) · [MERT2-FS](https://huggingface.co/m-a-p/MERT-v2-FullSong)
+
+## SheetSage2
+
+**State-of-the-art audio-to-score transcription:** SOTA on **10 of 13 benchmark metrics**, with **82.51% vocal melody pitch-class F1 on RWC-Pop**.
+
+[Demo and results](https://map-yue2.github.io/#sheetsage2) · [Model and inference](https://huggingface.co/m-a-p/SheetSage2)
 
 ## Models and resources
 
