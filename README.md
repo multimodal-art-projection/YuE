@@ -17,7 +17,7 @@
   <a href="#mert2">MERT2</a> ·
   <a href="#sheetsage2">SheetSage2</a> ·
   <a href="https://github.com/multimodal-art-projection/YuE/releases/tag/yue2-v0.1.6">📦 Release</a> ·
-  <a href="https://discord.gg/ssAyWMnMzu">Discord</a>
+  <a href="https://discord.gg/ssAyWMnMzu"><img alt="Join us on Discord" src="https://img.shields.io/discord/842440537755353128?color=5865F2&amp;logo=discord&amp;logoColor=white&amp;label=Discord&amp;style=flat-square" height="20" /></a>
 </p>
 
 **YuE2 brings frontier song quality to music generation with an editable composition.** Give it lyrics and a style prompt: it writes a melody-and-chord plan, then realizes that plan as a complete song with vocals and accompaniment.
