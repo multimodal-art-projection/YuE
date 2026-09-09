@@ -1,18 +1,20 @@
-YuE2 source code and agent skill license
+YuE2 model-weight license
 
-Copyright (c) 2026 the YuE2 authors.
-
-The original YuE2 source code, agent skill and documentation in this release
-are licensed under Creative Commons Attribution-NonCommercial 4.0 International
+The YuE2-3B, YuE2-Vae and YuE2-Vae-legacy checkpoint weights are
+licensed under Creative Commons Attribution-NonCommercial 4.0 International
 (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/
 
-For attribution, identify YuE2 and its source repository:
-https://github.com/multimodal-art-projection/YuE
+Scope: the YuE2 checkpoint weights in model.safetensors, or the corresponding
+models/<model-name>/model.safetensors files in the inference kit.
+For attribution, identify YuE2, the model name and its source repository:
+https://huggingface.co/m-a-p/YuE2-3B
+https://huggingface.co/m-a-p/YuE2-Vae
+https://huggingface.co/m-a-p/YuE2-Vae-legacy
 
-Third-party components retain their original licenses. See
-THIRD_PARTY_NOTICES.md and licenses/. Model checkpoint weights are separately
-covered by MODEL_LICENSE. Historical YuE v1 material on the YuE-v1 branch
-retains its existing licenses.
+This weight license does not replace separately applicable licenses for code,
+text tokenization files, evaluation assets or other bundled material.
+Third-party source notices and their original license texts are preserved in
+THIRD_PARTY_NOTICES.md and licenses/.
 
 The official license text follows without modification.
 Source: https://creativecommons.org/licenses/by-nc/4.0/legalcode.txt
@@ -424,4 +426,3 @@ the avoidance of doubt, this paragraph does not form part of the
 public licenses.
 
 Creative Commons may be contacted at creativecommons.org.
-

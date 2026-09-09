@@ -1,0 +1,4 @@
+interface:
+  display_name: "YuE2 Music"
+  short_description: "Generate, cover, and edit songs with the YuE2 family"
+  default_prompt: "Use $yue2-music to generate a song, edit its score, and render an audible comparison."

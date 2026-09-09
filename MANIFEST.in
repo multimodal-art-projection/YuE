@@ -1,0 +1,11 @@
+include README.md LICENSE MODEL_LICENSE THIRD_PARTY_NOTICES.md
+recursive-include licenses *.txt
+recursive-include docs *.md *.csv
+recursive-include examples *.py *.json *.abc *.txt *.md
+recursive-include skills *.md *.py *.json *.yaml LICENSE
+recursive-include tests *.py
+recursive-include tools *.py
+recursive-include assets *.png
+global-exclude __pycache__ *.py[cod]
+prune .venv*
+prune skills/yue2-music/.venv*
