@@ -4,7 +4,7 @@
   <img src="assets/logo.png" alt="YuE" width="150" />
 </p>
 
-<h1 align="center">YuE2 — Frontier Music Generation with Symbolic Planning</h1>
+<h1 align="center">YuE2: Unifying Symbolic and Audio Music Generation at Frontier Quality</h1>
 
 <p align="center"><strong>Compose in symbols. Create in sound.</strong></p>
 
