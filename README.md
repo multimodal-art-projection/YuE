@@ -236,4 +236,4 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
 
 ## Contact
 
-For collaboration inquiries, please contact [gezhang@umich.edu](mailto:gezhang@umich.edu).
+For collaborations, licensing, and data partnerships, please contact [gezhang@umich.edu](mailto:gezhang@umich.edu).
