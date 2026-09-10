@@ -233,3 +233,7 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
   url = {https://arxiv.org/abs/2503.08638}
 }
 ```
+
+## Contact
+
+For collaboration inquiries, please contact [gezhang@umich.edu](mailto:gezhang@umich.edu).
