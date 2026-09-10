@@ -113,6 +113,12 @@ git clone https://github.com/multimodal-art-projection/YuE.git
 
 cd YuE/inference/
 git clone https://huggingface.co/m-a-p/xcodec_mini_infer
+
+# If `git clone` produced tiny ~133-byte files instead of the real checkpoints,
+# git-lfs was not initialized or the Hugging Face LFS bandwidth quota is exceeded
+# (see issue #118). In that case, download via the Hugging Face CLI instead:
+#   pip install -U huggingface_hub
+#   hf download m-a-p/xcodec_mini_infer --local-dir xcodec_mini_infer
 ```
 
 ### 3. Run the inference
