@@ -8,7 +8,7 @@ version = "0.1.6"
 description = "YuE2 music generation with editable symbolic plans"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "CC-BY-NC-4.0"
+license = "Apache-2.0"
 license-files = ["LICENSE", "MODEL_LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*.txt"]
 dependencies = [
     "torch==2.10.0",

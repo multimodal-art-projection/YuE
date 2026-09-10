@@ -35,11 +35,11 @@ audio-reference, phoneme-alignment, or local-inpainting argument.
 ## Set up the needed models
 
 Read [models-and-setup.md](references/models-and-setup.md). Install the YuE2 runtime
-from the official GitHub release wheel or repository source. Use a separate environment
+from the official GitHub repository source. Use a separate environment
 for SheetSage2 because dependency pins differ. Download the public model snapshots and
-record their revisions. This skill's original instructions and helpers are licensed
-under CC BY-NC 4.0; model weights and third-party dependencies retain their applicable
-licenses.
+record their revisions. This skill's original instructions, helpers, and templates are
+licensed under [Apache 2.0](LICENSE). Copyright (c) 2026 the YuE2 authors.
+Model weights and third-party dependencies retain their applicable licenses.
 
 Use the supported baseline: one request at a time, BF16-capable NVIDIA GPU with 24 GB
 VRAM, default YuE2 settings. Do not silently shorten a requested song or lower inference
