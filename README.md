@@ -84,7 +84,7 @@ with YuE2Pipeline.from_pretrained("m-a-p/YuE2-3B", device="cuda") as pipe:
 | `cot="off"` | Generate directly from lyrics and style |
 | `abc=...` | Supply your own score in `full` or `melody` mode |
 
-[Generation guide](docs/generation.md) · [Original example inputs](examples/README.md) · [Download the wheel](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-v0.1.6/yue2_infer-0.1.6-py3-none-any.whl)
+[Generation guide](docs/generation.md) · [Original example inputs](examples/README.md) · [v0.1.6 wheel archive](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-v0.1.6/yue2_infer-0.1.6-py3-none-any.whl)
 
 ## Cover a song
 
@@ -135,7 +135,7 @@ The editable score is the white-box interface: you can inspect the intended comp
 
 The **[yue2-music skill](skills/yue2-music/SKILL.md)** teaches an agent how to generate songs, transcribe and cover recordings, edit ABC scores, check musical invariants, and organize listening comparisons. It includes portable helpers and references to the released model interfaces.
 
-**[Download the skill ZIP](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-v0.1.6/yue2-music.zip)**, or use `skills/yue2-music/` directly with an agent that supports `SKILL.md` packages. Install it using your agent's skill-directory or import mechanism; the Python runtime is installed separately with `pip install .`.
+Use **`skills/yue2-music/` from this repository** with an agent that supports `SKILL.md` packages. Install it using your agent's skill-directory or import mechanism; the Python runtime is installed separately with `pip install .`. The earlier [v0.1.6 skill ZIP](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-v0.1.6/yue2-music.zip) remains available under its bundled license.
 
 Try a concrete request:
 
@@ -197,7 +197,11 @@ MERT2 feature extraction is optional for generation. YuE2's pipeline does not re
 
 ## License
 
-YuE2's first-party code, agent skill, and model weights are released under **[CC BY-NC 4.0](LICENSE)**. Third-party components retain their [original licenses](THIRD_PARTY_NOTICES.md). The archived [YuE-v1 branch](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1) retains its original license.
+YuE2's first-party code, agent skill, and documentation are licensed under **[Apache 2.0](LICENSE)**. Copyright (c) 2026 the YuE2 authors.
+
+Model weights are separately licensed under **[CC BY-NC 4.0](MODEL_LICENSE)**. Third-party components retain their [original licenses](THIRD_PARTY_NOTICES.md). The archived [YuE-v1 branch](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1) retains its original license.
+
+Apache 2.0 applies to the current repository source; the earlier `yue2-v0.1.6` download archives retain their bundled licenses.
 
 ## Citation
 

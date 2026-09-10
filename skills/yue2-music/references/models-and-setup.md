@@ -46,20 +46,21 @@ before loading the next model.
 ### YuE2
 
 The release card targets Linux, Python 3.10+, and a 24 GB NVIDIA GPU with BF16
-support. The wheel installs its own pinned dependencies. Do not substitute an
+support. The package installs its own pinned dependencies. Do not substitute an
 unverified package with a similar name from PyPI.
 
 ```bash
 python3.12 -m venv .venv-yue2
 .venv-yue2/bin/python -m pip install \
-  https://github.com/multimodal-art-projection/YuE/releases/download/yue2-v0.1.6/yue2_infer-0.1.6-py3-none-any.whl
+  git+https://github.com/multimodal-art-projection/YuE.git
 ```
 
 Alternatively, install from a cloned official YuE repository with
 `.venv-yue2/bin/python -m pip install /path/to/YuE`. The runtime pins PyTorch
-2.10.0, Transformers 4.57.6, and NumPy 2.2.6. Obtain the wheel and its checksum
-from the same GitHub release; model repositories supply weights independently
-of the runtime. Use the generation examples in the main skill after installation.
+2.10.0, Transformers 4.57.6, and NumPy 2.2.6. Current repository code and this
+skill use Apache 2.0; earlier v0.1.6 wheel and skill ZIP archives retain their
+bundled licenses. Model repositories supply weights independently of the runtime.
+Use the generation examples in the main skill after installation.
 
 ### SheetSage2
 
