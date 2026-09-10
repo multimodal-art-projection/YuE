@@ -87,19 +87,18 @@ To use a **GUI/Gradio** interface, check out:
 - [YuE-Interface](https://github.com/alisson-anjos/YuE-Interface)  
 
 ### 1. Install environment and dependencies
-Make sure properly install flash attention 2 to reduce VRAM usage. 
+YuE v1 uses PyTorch scaled dot-product attention (SDPA) by default. A separate `flash-attn` installation is optional.
 ```bash
 # We recommend using conda to create a new environment.
 conda create -n yue python=3.8 # Python >=3.8 is recommended.
 conda activate yue
 # install cuda >= 11.8
 conda install pytorch torchvision torchaudio cudatoolkit=11.8 -c pytorch -c nvidia
-pip install -r <(curl -sSL https://raw.githubusercontent.com/multimodal-art-projection/YuE/main/requirements.txt)
+pip install -r <(curl -sSL https://raw.githubusercontent.com/multimodal-art-projection/YuE/YuE-v1/requirements.txt)
 
-# For saving GPU memory, FlashAttention 2 is mandatory. 
-# Without it, long audio may lead to out-of-memory (OOM) errors.
-# Be careful about matching the cuda version and flash-attn version
-pip install flash-attn --no-build-isolation
+# Optional: to use attn_implementation="flash_attention_2" instead of SDPA,
+# install a flash-attn version compatible with your PyTorch and CUDA versions:
+# pip install flash-attn --no-build-isolation
 ```
 
 ### 2. Download the infer code and tokenizer
@@ -109,10 +108,15 @@ pip install flash-attn --no-build-isolation
 sudo apt update
 sudo apt install git-lfs
 git lfs install
-git clone https://github.com/multimodal-art-projection/YuE.git
+git clone --branch YuE-v1 https://github.com/multimodal-art-projection/YuE.git
 
 cd YuE/inference/
 git clone https://huggingface.co/m-a-p/xcodec_mini_infer
+
+# If the clone left Git LFS pointer files instead of real checkpoints,
+# download the tokenizer through the Hugging Face CLI:
+#   python -m pip install "huggingface_hub>=0.34,<1"
+#   hf download m-a-p/xcodec_mini_infer --local-dir xcodec_mini_infer
 ```
 
 ### 3. Run the inference
