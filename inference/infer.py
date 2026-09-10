@@ -212,7 +212,7 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
             repetition_penalty=repetition_penalty, 
             eos_token_id=mmtokenizer.eoa,
             pad_token_id=mmtokenizer.eoa,
-            logits_processor=LogitsProcessorList([BlockTokenRangeProcessor(0, 32002), BlockTokenRangeProcessor(32016, 32016)]),
+            logits_processor=LogitsProcessorList([BlockTokenRangeProcessor(0, 32003), BlockTokenRangeProcessor(32016, 32017)]),
             guidance_scale=guidance_scale,
             )
         if output_seq[0][-1].item() != mmtokenizer.eoa:
@@ -309,7 +309,7 @@ def stage2_generate(model, prompt, batch_size=16):
     prompt_ids = torch.as_tensor(prompt_ids).to(device)
     len_prompt = prompt_ids.shape[-1]
     
-    block_list = LogitsProcessorList([BlockTokenRangeProcessor(0, 46358), BlockTokenRangeProcessor(53526, mmtokenizer.vocab_size)])
+    block_list = LogitsProcessorList([BlockTokenRangeProcessor(0, 46359), BlockTokenRangeProcessor(53526, mmtokenizer.vocab_size+1)])
 
     # Teacher forcing generate loop
     for frames_idx in range(codec_ids.shape[1]):
