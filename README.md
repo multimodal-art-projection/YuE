@@ -10,12 +10,13 @@
 
 <p align="center">
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
-  <a href="https://huggingface.co/m-a-p/YuE2-3B">🤗 Model</a> ·
+  <a href="https://huggingface.co/m-a-p/YuE2-3B">🤗 YuE2</a> ·
   <a href="#quick-start">🚀 Quick start</a> ·
   <a href="#agent-skill">🤖 Agent skill</a> ·
   <a href="#benchmarks">📊 Benchmarks</a> ·
-  <a href="#mert2">MERT2</a> ·
-  <a href="#sheetsage2">SheetSage2</a> ·
+  <a href="https://huggingface.co/m-a-p/MERT-v2-FullSong">🤗 MERT2</a> ·
+  <a href="https://huggingface.co/m-a-p/SheetSage2">🤗 SheetSage2</a> ·
+  <a href="https://huggingface.co/datasets/m-a-p/WildSongBench">🤗 WSB</a> ·
   <a href="https://github.com/multimodal-art-projection/YuE/releases/tag/yue2-v0.1.6">📦 Release</a> ·
   <a href="https://discord.gg/ssAyWMnMzu"><img alt="Join us on Discord" src="https://img.shields.io/discord/842440537755353128?color=5865F2&amp;logo=discord&amp;logoColor=white&amp;label=Discord&amp;style=flat-square" height="20" /></a>
 </p>
@@ -88,7 +89,7 @@ with YuE2Pipeline.from_pretrained("m-a-p/YuE2-3B", device="cuda") as pipe:
 
 ## Cover a song
 
-Transcribe a source recording with **[SheetSage2](https://huggingface.co/m-a-p/SheetSage2)**, review its melody ABC, and provide new lyrics or a target style. For covers, use **`cot="melody"` and a score without chord symbols** so the accompaniment can adapt to the new style.
+Transcribe a source recording with **[🤗 SheetSage2](https://huggingface.co/m-a-p/SheetSage2)**, review its melody ABC, and provide new lyrics or a target style. For covers, use **`cot="melody"` and a score without chord symbols** so the accompaniment can adapt to the new style.
 
 ```python
 from pathlib import Path
@@ -169,29 +170,33 @@ Both YuE2 settings use symbolic planning and the benchmark decoder, **YuE2-Vae-l
 
 **Zero-shot covers.** On 948 works, full-score YuE2 reaches **0.647 CLEWS mAP**, compared with **0.006 without a score**, while using the general generator without cover-specific fine-tuning. Source-identity preservation and target-style quality are measured separately; melody-only covers offer more freedom to change the arrangement. [Cover evaluation](docs/benchmarks.md#zero-shot-cover-generation).
 
+### Reproduce the benchmarks
+
+To reproduce the reported benchmark scores, follow the instructions on [🤗 WildSongBench (WSB)](https://huggingface.co/datasets/m-a-p/WildSongBench#reproduce-standard-yue2).
+
 ## MERT2
 
 **State-of-the-art music understanding:** SOTA on **14 of 15 MARBLE metrics**, with **91.72% genre accuracy on GTZAN**.
 
-[Demo and results](https://map-yue2.github.io/#mert2) · [MERT2-30s](https://huggingface.co/m-a-p/MERT-v2-30s) · [MERT2-FS](https://huggingface.co/m-a-p/MERT-v2-FullSong)
+[Demo and results](https://map-yue2.github.io/#mert2) · [🤗 MERT2-30s](https://huggingface.co/m-a-p/MERT-v2-30s) · [🤗 MERT2-FS](https://huggingface.co/m-a-p/MERT-v2-FullSong)
 
 ## SheetSage2
 
 **State-of-the-art audio-to-score transcription:** SOTA on **10 of 13 benchmark metrics**, with **82.51% vocal melody pitch-class F1 on RWC-Pop**.
 
-[Demo and results](https://map-yue2.github.io/#sheetsage2) · [Model and inference](https://huggingface.co/m-a-p/SheetSage2)
+[Demo and results](https://map-yue2.github.io/#sheetsage2) · [🤗 Model and inference](https://huggingface.co/m-a-p/SheetSage2)
 
 ## Models and resources
 
 | Resource | Purpose |
 |---|---|
-| [YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) | Song generation, symbolic planning, covering, and editing |
-| [YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae) | Default generation and listening decoder |
-| [YuE2-Vae-legacy](https://huggingface.co/m-a-p/YuE2-Vae-legacy) | Decoder for the reported benchmark protocol |
-| [SheetSage2](https://huggingface.co/m-a-p/SheetSage2) | Audio-to-score transcription for covers and editing |
-| [MERT-v2-FullSong](https://huggingface.co/m-a-p/MERT-v2-FullSong) | Full-song music representations; SheetSage2's encoder |
-| [MERT-v2-30s](https://huggingface.co/m-a-p/MERT-v2-30s) | Music representations for short recordings |
-| [WildSongBench](https://huggingface.co/datasets/m-a-p/WildSongBench) | Evaluation prompts and benchmark resources |
+| [🤗 YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) | Song generation, symbolic planning, covering, and editing |
+| [🤗 YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae) | Default generation and listening decoder |
+| [🤗 YuE2-Vae-legacy](https://huggingface.co/m-a-p/YuE2-Vae-legacy) | Decoder for the reported benchmark protocol |
+| [🤗 SheetSage2](https://huggingface.co/m-a-p/SheetSage2) | Audio-to-score transcription for covers and editing |
+| [🤗 MERT-v2-FullSong](https://huggingface.co/m-a-p/MERT-v2-FullSong) | Full-song music representations; SheetSage2's encoder |
+| [🤗 MERT-v2-30s](https://huggingface.co/m-a-p/MERT-v2-30s) | Music representations for short recordings |
+| [🤗 WildSongBench](https://huggingface.co/datasets/m-a-p/WildSongBench) | Evaluation prompts and benchmark resources |
 
 MERT2 feature extraction is optional for generation. YuE2's pipeline does not require a separate MERT2 model download. [Demos and interactive results](https://map-yue2.github.io/) · [Release downloads](https://github.com/multimodal-art-projection/YuE/releases/tag/yue2-v0.1.6).
 
