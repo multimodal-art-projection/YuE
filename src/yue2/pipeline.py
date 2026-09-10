@@ -16,6 +16,20 @@ from .sampling import generate_tokens, synchronize
 from .progress import Progress
 
 
+def _ar_submodules(model):
+    """AR generation path inside each layer: used while generating."""
+
+    for layer in model.model.layers:
+        yield layer.input_layernorm, layer.self_attn, layer.post_attention_layernorm, layer.mlp
+
+
+def _nar_submodules(model):
+    """NAR flow-matching path inside each layer: used only during synthesis."""
+
+    for layer in model.model.layers:
+        yield layer.nar_input_layernorm, layer.nar_self_attn, layer.nar_pre_mlp_layernorm, layer.nar_mlp
+
+
 @dataclass
 class SymbolicPlan:
     request: SongRequest
@@ -121,7 +135,8 @@ class SongResult:
 class YuE2Pipeline:
     def __init__(self, model_dir, vae_dir, *, device="auto", memory_budget_gib=24,
                  backend="torch", generation_config=None, verify_hashes=True,
-                 vae_core_frames=None, quantization="none", offload_ar=False, progress=True):
+                 vae_core_frames=None, quantization="none", offload_ar=False, low_vram=False,
+                 progress=True):
         if not isinstance(progress, bool):
             raise TypeError("progress must be True or False")
         self.progress = progress
@@ -147,6 +162,7 @@ class YuE2Pipeline:
         self.memory_budget_gib = float(memory_budget_gib)
         self.vae_core_frames = vae_core_frames if vae_core_frames is not None else (512 if memory_budget_gib <= 12 else 1024)
         self.offload_ar = offload_ar
+        self.low_vram = low_vram
         self.generation_config = generation_config or GenerationConfig()
         self.tokenizer = YuE2TextTokenizer(self.model_dir / "qwen.tiktoken")
         with self._status("Verifying model files"):
@@ -159,7 +175,10 @@ class YuE2Pipeline:
             if not torch.cuda.is_bf16_supported():
                 raise RuntimeError("The unquantized preset requires CUDA BF16 support")
             total = torch.cuda.get_device_properties(self.device).total_memory
-            budget = min((self.memory_budget_gib - 2) * 2**30, total - 2 * 2**30)
+            if self.low_vram:
+                budget = total - 2**30
+            else:
+                budget = min((self.memory_budget_gib - 2) * 2**30, total - 2 * 2**30)
             if budget <= 0:
                 raise ValueError("Memory budget must leave room for a 2GiB reserve")
             torch.cuda.set_per_process_memory_fraction(min(budget / total, 1), self.device)
@@ -207,6 +226,37 @@ class YuE2Pipeline:
         write_json(directory / "pipeline.json", {"model": "YuE2-3B", "vae": "YuE2-Vae",
                    "generation_config": self.generation_config.to_dict(), "source_weights": self.weights})
 
+    def _place_low_vram(self, for_nar=False):
+        """Keep the AR generation path and the NAR synthesis path from ever
+        sharing the accelerator: a small GPU never hosts the full weight set.
+
+        Resident on the accelerator: embeddings, head, norms and the NAR
+        auxiliary heads. The AR path of every layer is moved in for AR
+        generation (planning, semantic tokens) and for each acoustic chunk's
+        AR prefill. The NAR path stays on CPU here; ``nar.py`` swaps the two
+        paths around each flow-matching solve so neither overlaps the other on
+        GPU. ``for_nar`` only controls the message label; the resulting layout
+        is the same so prefill and generation share one resident set.
+        """
+        device = self.device
+        cpu = torch.device("cpu")
+        model = self._model
+        for module in (model.model.embed_tokens, model.model.norm, model.model.rotary_emb,
+                       model.lm_head, model.llm2vae, model.vae2llm,
+                       model.time_embedder, model.latent_pos_embed):
+            module.to(device)
+        for layer in model.model.layers:
+            layer.input_layernorm.to(device)
+            layer.self_attn.to(device)
+            layer.post_attention_layernorm.to(device)
+            layer.mlp.to(device)
+            layer.nar_input_layernorm.to(cpu)
+            layer.nar_self_attn.to(cpu)
+            layer.nar_pre_mlp_layernorm.to(cpu)
+            layer.nar_mlp.to(cpu)
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
     def _load_model(self, for_nar=False):
         loading = self._model is None or next(self._model.parameters()).device != self.device
         with self._status("Loading model") if loading else nullcontext():
@@ -219,7 +269,10 @@ class YuE2Pipeline:
             if self.quantization == "fp8" and not for_nar:
                 from .quantization import prepare_fp8_ar
                 prepare_fp8_ar(self._model, self.device)
-            self._model.to(self.device)
+            if self.low_vram:
+                self._place_low_vram(for_nar=for_nar)
+            else:
+                self._model.to(self.device)
         return self._model
 
     def _request(self, style=None, lyrics=None, *, tags=None, **kwargs):
@@ -299,7 +352,8 @@ class YuE2Pipeline:
             report = (lambda completed, total: status.update(completed, total=total)) if self.progress else None
             result = synthesize(model, semantic.plan.prefix, semantic.tokens,
                                 semantic.plan.request.seed, steps=self.generation_config.ode_steps,
-                                context=self.generation_config.context, offload_ar=self.offload_ar,
+                                context=self.generation_config.context,
+                                offload_ar=self.offload_ar or getattr(self, "low_vram", False),
                                 cancelled=cancelled, on_progress=report)
             return result.detach().float().cpu().numpy()
 
@@ -371,7 +425,7 @@ class YuE2Pipeline:
                 "model_dtype": "bfloat16", "vae_dtype": "float32", "vae_decode": "halo_crop",
                 "vae_core_frames": self.vae_core_frames, "vae_halo_frames": 16,
                 "device": str(self.device), "memory_budget_gib": self.memory_budget_gib,
-                "offload_ar": self.offload_ar, "runtime_sha256": self.runtime_sha256,
+                "offload_ar": self.offload_ar, "low_vram": self.low_vram, "runtime_sha256": self.runtime_sha256,
                 "decoder_release": json.loads((self.vae_dir / "config.json").read_text()).get("release_variant"),
                 "validation_status": "unvalidated"}
 
