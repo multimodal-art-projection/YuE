@@ -30,13 +30,13 @@
 
 **YuE2 brings frontier song quality to music generation with an editable composition.** Give it lyrics and a style prompt: it writes a melody-and-chord plan, then realizes that plan as a complete song with vocals and accompaniment.
 
-- **Frontier quality.** Competitive with the evaluated proprietary systems on WildSongBench. YuE2 (best-of-8) achieves **6.9632 SongBench Avg**, the highest observed mean among all evaluated settings.
+- **Frontier quality.** YuE2 is competitive with Suno v5/v6 on WildSongBench. YuE2 (best-of-8) achieves **6.9632 SongBench Avg**, the highest observed mean among all evaluated settings.
 - **White-box music generation through symbolic planning.** Read, play, and change the composition before rendering it. Melody and chords become explicit controls that a person or an agent can inspect and edit.
 - **Zero-shot covers and agentic editing.** Reimagine a transcribed song in a new style, or refine a song through a conversation about its score, arrangement, and lyrics—all with the same generation checkpoint.
 
 [![YuE2 song quality and text alignment on WildSongBench](assets/frontier-teaser.png)](https://map-yue2.github.io/#model-overview)
 
-*192 WildSongBench prompts. Both YuE2 settings use symbolic planning. Bo8 = best-of-8. The axes are normalized comparison indices; bubble area represents AudioBox production quality. [Scores and evaluation protocol](docs/benchmarks.md).*
+*192 WildSongBench prompts. Both YuE2 settings use symbolic planning. Bo8 = best-of-8. The axes are normalized comparison indices; bubble area represents AudioBox production quality. [Scores and evaluation protocol](docs/benchmarks.md). [Vector PDF](assets/frontier-teaser.pdf) · [SVG](assets/frontier-teaser.svg).*
 
 ## Hear what you can make
 
@@ -151,7 +151,7 @@ Try a concrete request:
 
 ## Benchmarks
 
-**WildSongBench: 192 prompts, automatic evaluation, September 5, 2026.**
+**WildSongBench: 192 prompts, automatic evaluation, September 12, 2026.**
 
 | System / setting | SongBench Avg ↑ | AudioBox PQ ↑ | MuLan ↑ | PER ↓ |
 |---|---:|---:|---:|---:|
@@ -161,6 +161,8 @@ Try a concrete request:
 | **YuE2** † | 6.7316 | 8.2598 | 0.5068 | 8.44% |
 | Suno v5.5 | 6.7150 | 8.1955 | 0.5089 | 5.96% |
 | Suno v4.5 | 6.6995 | 8.2541 | 0.5022 | **5.80%** |
+| Suno v6 | 6.5562 | 8.1296 | 0.4916 | 7.58% |
+| Suno v6 Wild | 6.4195 | 8.1785 | 0.4999 | 7.45% |
 | LeVo 2 † | 6.3247 | **8.3966** | 0.3542 | 26.12% |
 | MiniMax Music 2.6 | 6.3222 | 8.1711 | 0.4251 | 24.55% |
 | MiniMax Music 3 † | 6.2830 | 8.2825 | 0.3928 | 6.27% |
@@ -171,7 +173,7 @@ Try a concrete request:
 | YuE 1 † | 4.9165 | 7.8683 | 0.2623 | 36.38% |
 | SongBloom † | 4.2350 | 8.1539 | 0.2697 | 19.19% |
 
-† Publicly available model weights. All 15 evaluated settings are shown, sorted by SongBench Avg; bold values mark the best result in each column.
+† Publicly available model weights. All 17 evaluated settings are shown, sorted by SongBench Avg; bold values mark the best result in each column.
 
 Both YuE2 settings use symbolic planning and the benchmark decoder, **YuE2-Vae-legacy**. Standard YuE2 selects from two candidates; best-of-8 selects from eight. Rankings vary by metric; the small gap between the highest means does not establish statistical significance. [Full results and selection protocols](docs/benchmarks.md).
 

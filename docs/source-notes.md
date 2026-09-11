@@ -4,7 +4,7 @@ The README's frontier figure and architecture figure are reproduced from the [Yu
 
 The institution panels reuse the eight marks and their order from the [demo page](https://map-yue2.github.io/), with layouts for desktop and mobile. The SVGs contain the original vector artwork and embedded raster artwork; EXIF metadata was removed without recompressing image pixels. Institution names and marks belong to their respective organizations.
 
-The [WSB CSV](benchmark-results.csv) is the September 5, 2026 result set displayed on the demo page. The README presents all 15 settings for four metrics; the CSV retains the complete metric set. Benchmark scope and selection are recorded in [benchmarks.md](benchmarks.md).
+The [WSB CSV](benchmark-results.csv) is the September 12, 2026 result set displayed on the demo page. The README presents all 17 settings for four metrics; the CSV retains the complete metric set. Benchmark scope and selection are recorded in [benchmarks.md](benchmarks.md).
 
 ## Citation verification
 
