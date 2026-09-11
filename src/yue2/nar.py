@@ -204,24 +204,46 @@ class CachedNAR:
 
 @contextmanager
 def _offload_ar(model, enabled):
-    """Temporarily move unused AR modules; this model cannot serve concurrently."""
-    modules = [model.model.embed_tokens, model.lm_head]
+    """Swap the active path around flow matching so AR and NAR weights never
+    share the accelerator; this model cannot serve concurrently either way.
+
+    AR prefill needs every layer's AR attention/MLP on the accelerator; the
+    flow-matching steps need the per-layer NAR projections instead. When
+    ``enabled``, the AR pair (embeddings, output head, AR submodules) is moved
+    off the accelerator first and the NAR submodules moved in, then both are
+    restored so the next chunk sees the prefill layout again.
+    """
+    head = [model.model.embed_tokens, model.lm_head]
+    ar, nar = [], []
     for layer in model.model.layers:
-        modules.extend((layer.input_layernorm, layer.self_attn, layer.post_attention_layernorm, layer.mlp))
-    moved = []
+        ar.extend((layer.input_layernorm, layer.self_attn, layer.post_attention_layernorm, layer.mlp))
+        nar.extend((getattr(layer, "nar_input_layernorm", None), getattr(layer, "nar_self_attn", None),
+                    getattr(layer, "nar_pre_mlp_layernorm", None), getattr(layer, "nar_mlp", None)))
+    nar = [module for module in nar if module is not None]
+    accelerator = next(model.model.embed_tokens.parameters()).device
+    moved, moved_nar = [], []
     try:
         if enabled:
-            for module in modules:
+            for module in head + ar:
                 device = next(module.parameters()).device
                 if device.type != "cpu":
                     module.to(device="cpu")
                     moved.append((module, device))
+            for module in nar:
+                source = next(module.parameters()).device
+                if source != accelerator:
+                    module.to(device=accelerator)
+                    moved_nar.append((module, source))
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         yield
     finally:
+        for module, source in moved_nar:
+            module.to(device=source)
         for module, device in moved:
             module.to(device=device)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 @torch.inference_mode()
