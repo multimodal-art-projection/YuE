@@ -1,0 +1,639 @@
+{
+  "dataset": "WSB",
+  "n_prompts": 192,
+  "source_sha256": "579ffb6b9b069f6d3cdd32a76788998ec633a12426a0ebb7c9f83e6fb0d5b1fc",
+  "reference_systems": [
+    "Suno v5",
+    "Suno v4.5",
+    "Suno v5.5",
+    "Suno v6",
+    "Suno v6 Wild",
+    "MiniMax Music 2.6",
+    "Mureka 9",
+    "YuE 1",
+    "SongBloom",
+    "LeVo 2",
+    "ACE-Step 1.5",
+    "HeartMuLa",
+    "DiffRhythm 2",
+    "Muse",
+    "MiniMax Music 3"
+  ],
+  "normalization": "z = (system mean - reference mean) / reference population std",
+  "reference_statistics": {
+    "songbench_global_avg": {
+      "mean": 6.121283377976191,
+      "population_std": 0.7357457614725659
+    },
+    "songeval_global_avg": {
+      "mean": 4.015471256944445,
+      "population_std": 0.40701956006795303
+    },
+    "songbench_musicality": {
+      "mean": 5.265866701388889,
+      "population_std": 0.7053243399537521
+    },
+    "songeval_musicality": {
+      "mean": 3.9703476041666663,
+      "population_std": 0.4051162346821886
+    },
+    "mulan": {
+      "mean": 0.4186944833891175,
+      "population_std": 0.08094623772340859
+    },
+    "allmusiccaps": {
+      "mean": 0.3533851072454733,
+      "population_std": 0.06820180734302435
+    },
+    "control_overall": {
+      "mean": 4.248089863722948,
+      "population_std": 0.4756164261685128
+    }
+  },
+  "quality_weights": {
+    "songbench": 0.6666666666666666,
+    "songeval": 0.33333333333333337
+  },
+  "alignment_weights": {
+    "mulan": 0.3333333333333333,
+    "allmusiccaps": 0.3333333333333333,
+    "control_overall": 0.3333333333333333
+  },
+  "values": {
+    "YuE2": {
+      "quality_global_avg": 0.7552819777715396,
+      "quality_musicality": 0.8078339775660601,
+      "alignment": 0.9210758825216073,
+      "audiobox_pq": 8.25979095697403
+    },
+    "YuE2 (best-of-8)": {
+      "quality_global_avg": 0.9926775311951548,
+      "quality_musicality": 1.1764900036325572,
+      "alignment": 0.8913402282808791,
+      "audiobox_pq": 8.271365446348986
+    },
+    "ACE-Step 1.5": {
+      "quality_global_avg": -0.2376035047550664,
+      "quality_musicality": -0.23714600301672967,
+      "alignment": 0.47315715541685155,
+      "audiobox_pq": 8.051833018660545
+    },
+    "DiffRhythm 2": {
+      "quality_global_avg": -1.1980739812149017,
+      "quality_musicality": -1.1559112521857333,
+      "alignment": -0.41604199452568785,
+      "audiobox_pq": 7.978225273390611
+    },
+    "HeartMuLa": {
+      "quality_global_avg": 0.5544151508643054,
+      "quality_musicality": 0.6806476331364909,
+      "alignment": -1.0459382238546173,
+      "audiobox_pq": 8.293305036922296
+    },
+    "LeVo 2": {
+      "quality_global_avg": 0.19076064388585245,
+      "quality_musicality": 0.19203107542441739,
+      "alignment": -0.8946697129809009,
+      "audiobox_pq": 8.396623315910498
+    },
+    "MiniMax Music 2.6": {
+      "quality_global_avg": 0.24999255629041012,
+      "quality_musicality": 0.2385294260172236,
+      "alignment": 0.317708040770442,
+      "audiobox_pq": 8.171058195332686
+    },
+    "MiniMax Music 3": {
+      "quality_global_avg": 0.21521779684943682,
+      "quality_musicality": 0.13768736380561403,
+      "alignment": 0.06167958802908772,
+      "audiobox_pq": 8.28245102117459
+    },
+    "Mureka 9": {
+      "quality_global_avg": 1.063838458020569,
+      "quality_musicality": 1.0622475778213865,
+      "alignment": 0.6353722959962361,
+      "audiobox_pq": 8.022609589000544
+    },
+    "Muse": {
+      "quality_global_avg": -0.2640126435903063,
+      "quality_musicality": -0.28400814299371513,
+      "alignment": -0.027277572405822206,
+      "audiobox_pq": 8.051745663086573
+    },
+    "SongBloom": {
+      "quality_global_avg": -2.3727929454241776,
+      "quality_musicality": -2.3469029518895956,
+      "alignment": -2.25355622224482,
+      "audiobox_pq": 8.153916046023369
+    },
+    "Suno v4.5": {
+      "quality_global_avg": 0.8114848653568392,
+      "quality_musicality": 0.822345947368047,
+      "alignment": 0.6266794053102317,
+      "audiobox_pq": 8.254062737027803
+    },
+    "Suno v5": {
+      "quality_global_avg": 0.9607654088358881,
+      "quality_musicality": 0.9616318815497118,
+      "alignment": 1.1513277335650094,
+      "audiobox_pq": 8.169838989774385
+    },
+    "Suno v5.5": {
+      "quality_global_avg": 0.7014955760788759,
+      "quality_musicality": 0.6606381030854666,
+      "alignment": 0.7992264544775121,
+      "audiobox_pq": 8.195489337046942
+    },
+    "Suno v6": {
+      "quality_global_avg": 0.6341407893639396,
+      "quality_musicality": 0.6097852138267854,
+      "alignment": 0.9417981546473502,
+      "audiobox_pq": 8.129587392012278
+    },
+    "Suno v6 Wild": {
+      "quality_global_avg": 0.43765333454931554,
+      "quality_musicality": 0.44783537273294216,
+      "alignment": 0.9563182017109547,
+      "audiobox_pq": 8.178526304662228
+    },
+    "YuE 1": {
+      "quality_global_avg": -1.7472815051109758,
+      "quality_musicality": -1.7894112446823107,
+      "alignment": -1.3257833039118254,
+      "audiobox_pq": 7.868339642882347
+    }
+  },
+  "sensitivity": [
+    {
+      "variant": "global_avg",
+      "songbench_weight": 0.5,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": -0.02710930368588904,
+      "rank_yue2": 6,
+      "rank_bo8": 3,
+      "ranking": [
+        "Mureka 9",
+        "Suno v5",
+        "YuE2 (best-of-8)",
+        "Suno v4.5",
+        "HeartMuLa",
+        "YuE2",
+        "Suno v6",
+        "Suno v5.5",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "MiniMax Music 3",
+        "LeVo 2",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "global_avg",
+      "songbench_weight": 0.6,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.10967637466998481,
+      "rank_yue2": 5,
+      "rank_bo8": 2,
+      "ranking": [
+        "Mureka 9",
+        "YuE2 (best-of-8)",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v5.5",
+        "Suno v6",
+        "HeartMuLa",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "MiniMax Music 3",
+        "LeVo 2",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "global_avg",
+      "songbench_weight": 0.6666666666666666,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.20086682690723423,
+      "rank_yue2": 5,
+      "rank_bo8": 2,
+      "ranking": [
+        "Mureka 9",
+        "YuE2 (best-of-8)",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v5.5",
+        "Suno v6",
+        "HeartMuLa",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "MiniMax Music 3",
+        "LeVo 2",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "global_avg",
+      "songbench_weight": 0.7,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.24646205302585877,
+      "rank_yue2": 5,
+      "rank_bo8": 2,
+      "ranking": [
+        "Mureka 9",
+        "YuE2 (best-of-8)",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v5.5",
+        "Suno v6",
+        "HeartMuLa",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "MiniMax Music 3",
+        "LeVo 2",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "global_avg",
+      "songbench_weight": 0.75,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.3148548922037958,
+      "rank_yue2": 5,
+      "rank_bo8": 2,
+      "ranking": [
+        "Mureka 9",
+        "YuE2 (best-of-8)",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v5.5",
+        "Suno v6",
+        "HeartMuLa",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "MiniMax Music 3",
+        "LeVo 2",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "global_avg",
+      "songbench_weight": 0.8,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.3832477313817329,
+      "rank_yue2": 5,
+      "rank_bo8": 2,
+      "ranking": [
+        "Mureka 9",
+        "YuE2 (best-of-8)",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v5.5",
+        "Suno v6",
+        "Suno v6 Wild",
+        "HeartMuLa",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "musicality",
+      "songbench_weight": 0.5,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": -0.10071426090411806,
+      "rank_yue2": 6,
+      "rank_bo8": 1,
+      "ranking": [
+        "YuE2 (best-of-8)",
+        "Mureka 9",
+        "Suno v5",
+        "HeartMuLa",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v6",
+        "Suno v5.5",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "musicality",
+      "songbench_weight": 0.6,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.036026102296094376,
+      "rank_yue2": 5,
+      "rank_bo8": 1,
+      "ranking": [
+        "YuE2 (best-of-8)",
+        "Mureka 9",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "HeartMuLa",
+        "Suno v5.5",
+        "Suno v6",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "musicality",
+      "songbench_weight": 0.6666666666666666,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.12718634442956922,
+      "rank_yue2": 5,
+      "rank_bo8": 1,
+      "ranking": [
+        "YuE2 (best-of-8)",
+        "Mureka 9",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "HeartMuLa",
+        "Suno v5.5",
+        "Suno v6",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "musicality",
+      "songbench_weight": 0.7,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.1727664654963067,
+      "rank_yue2": 5,
+      "rank_bo8": 1,
+      "ranking": [
+        "YuE2 (best-of-8)",
+        "Mureka 9",
+        "Suno v5",
+        "Suno v4.5",
+        "YuE2",
+        "Suno v5.5",
+        "HeartMuLa",
+        "Suno v6",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "musicality",
+      "songbench_weight": 0.75,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.24113664709641314,
+      "rank_yue2": 4,
+      "rank_bo8": 1,
+      "ranking": [
+        "YuE2 (best-of-8)",
+        "Mureka 9",
+        "Suno v5",
+        "YuE2",
+        "Suno v4.5",
+        "Suno v5.5",
+        "Suno v6",
+        "HeartMuLa",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    },
+    {
+      "variant": "musicality",
+      "songbench_weight": 0.8,
+      "best_public": "HeartMuLa",
+      "yue2_minus_best_public": 0.30950682869651935,
+      "rank_yue2": 4,
+      "rank_bo8": 1,
+      "ranking": [
+        "YuE2 (best-of-8)",
+        "Mureka 9",
+        "Suno v5",
+        "YuE2",
+        "Suno v4.5",
+        "Suno v5.5",
+        "Suno v6",
+        "HeartMuLa",
+        "Suno v6 Wild",
+        "MiniMax Music 2.6",
+        "LeVo 2",
+        "MiniMax Music 3",
+        "ACE-Step 1.5",
+        "Muse",
+        "DiffRhythm 2",
+        "YuE 1",
+        "SongBloom"
+      ]
+    }
+  ],
+  "display_normalization": {
+    "formula": "index = 10 + 80 * (composite - min) / (max - min)",
+    "display_range": [
+      10,
+      90
+    ],
+    "axis_range": [
+      0,
+      100
+    ],
+    "endpoint_systems": [
+      "YuE2",
+      "YuE2 (best-of-8)",
+      "ACE-Step 1.5",
+      "DiffRhythm 2",
+      "HeartMuLa",
+      "LeVo 2",
+      "MiniMax Music 2.6",
+      "MiniMax Music 3",
+      "Mureka 9",
+      "Muse",
+      "SongBloom",
+      "Suno v4.5",
+      "Suno v5",
+      "Suno v5.5",
+      "Suno v6",
+      "Suno v6 Wild",
+      "YuE 1"
+    ],
+    "bounds": {
+      "quality_global_avg": {
+        "min": -2.3727929454241776,
+        "max": 1.063838458020569
+      },
+      "quality_musicality": {
+        "min": -2.3469029518895956,
+        "max": 1.1764900036325572
+      },
+      "alignment": {
+        "min": -2.25355622224482,
+        "max": 1.1513277335650094
+      }
+    },
+    "scope": "Observed extrema across the frozen 17-setting WSB comparison."
+  },
+  "display_values": {
+    "YuE2": {
+      "quality_global_avg": 82.81723422675485,
+      "quality_musicality": 81.6295223219151,
+      "alignment": 84.59008050713697
+    },
+    "YuE2 (best-of-8)": {
+      "quality_global_avg": 88.34347258180588,
+      "quality_musicality": 90.0,
+      "alignment": 83.89142164823544
+    },
+    "ACE-Step 1.5": {
+      "quality_global_avg": 59.70424092683039,
+      "quality_musicality": 57.90284763591369,
+      "alignment": 74.06593383035025
+    },
+    "DiffRhythm 2": {
+      "quality_global_avg": 37.34582389095981,
+      "quality_musicality": 37.04192724997628,
+      "alignment": 53.17361182506653
+    },
+    "HeartMuLa": {
+      "quality_global_avg": 78.1413338271742,
+      "quality_musicality": 78.7417071724812,
+      "alignment": 38.373783402036175
+    },
+    "LeVo 2": {
+      "quality_global_avg": 69.67596261246808,
+      "quality_musicality": 67.6474792193652,
+      "alignment": 41.9279370903721
+    },
+    "MiniMax Music 2.6": {
+      "quality_global_avg": 71.0547991637534,
+      "quality_musicality": 68.70324225641005,
+      "alignment": 70.41355409197678
+    },
+    "MiniMax Music 3": {
+      "quality_global_avg": 70.24529112268468,
+      "quality_musicality": 66.41358422542463,
+      "alignment": 64.3979962976035
+    },
+    "Mureka 9": {
+      "quality_global_avg": 90.0,
+      "quality_musicality": 87.40608152985898,
+      "alignment": 77.87728582201137
+    },
+    "Muse": {
+      "quality_global_avg": 59.08947290000577,
+      "quality_musicality": 56.83882462017735,
+      "alignment": 62.30788899081859
+    },
+    "SongBloom": {
+      "quality_global_avg": 10.0,
+      "quality_musicality": 10.0,
+      "alignment": 10.0
+    },
+    "Suno v4.5": {
+      "quality_global_avg": 84.12555929249136,
+      "quality_musicality": 81.95902220989649,
+      "alignment": 77.67304060722402
+    },
+    "Suno v5": {
+      "quality_global_avg": 87.60060275113905,
+      "quality_musicality": 85.12156322510432,
+      "alignment": 90.0
+    },
+    "Suno v5.5": {
+      "quality_global_avg": 81.56516159216855,
+      "quality_musicality": 78.28738305243859,
+      "alignment": 81.72714762306776
+    },
+    "Suno v6": {
+      "quality_global_avg": 79.9972358228254,
+      "quality_musicality": 77.13274853053025,
+      "alignment": 85.0769639932043
+    },
+    "Suno v6 Wild": {
+      "quality_global_avg": 75.42328111548792,
+      "quality_musicality": 73.45561474186167,
+      "alignment": 85.41812210025412
+    },
+    "YuE 1": {
+      "quality_global_avg": 24.561036477434577,
+      "quality_musicality": 22.65806486519848,
+      "alignment": 31.798638200280863
+    }
+  },
+  "per_song_validation": {
+    "systems": 17,
+    "records": 3264,
+    "absolute_tolerance": 1e-10
+  },
+  "interpretation": [
+    "Descriptive standardized composites, not percentages or validated new evaluators.",
+    "Observed extrema map to 10 and 90 on 0–100 axes, leaving symmetric display margins.",
+    "All 15 external baselines, including HeartMuLa and both Suno v6 variants, define one frozen WSB reference.",
+    "YuE2 and Bo8 are excluded from the 15-system z-score standardization reference.",
+    "Q3O retains recorded prompt weights, which differ on some selected records.",
+    "Evaluator reuse and candidate-selection protocols remain as documented in Tables 1–2."
+  ],
+  "source": "benchmark-results.csv",
+  "snapshot": "2026-09-12"
+}

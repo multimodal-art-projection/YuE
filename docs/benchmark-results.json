@@ -1,0 +1,316 @@
+{
+  "snapshot": "2026-09-12",
+  "scope": "15 comparator systems and 2 YuE2 settings on WildSongBench; recorded generation and selection protocols, not matched compute.",
+  "datasets": [
+    {
+      "id": "WSB",
+      "label": "WildSongBench",
+      "prompts": 192
+    }
+  ],
+  "metrics": [
+    {
+      "key": "songbench_global_avg",
+      "label": "SongBench",
+      "description": "Seven-dimension global average",
+      "maximum": 10,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "songbench_musicality",
+      "label": "SongBench Musicality",
+      "description": "SongBench musicality dimension",
+      "maximum": 10,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "songeval_global_avg",
+      "label": "SongEval",
+      "description": "Five-dimension global average",
+      "maximum": 5,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "songeval_musicality",
+      "label": "SongEval Musicality",
+      "description": "SongEval musicality dimension",
+      "maximum": 5,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "audiobox_pq",
+      "label": "AudioBox PQ",
+      "description": "Production quality",
+      "maximum": 10,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "mulan",
+      "label": "MuLan",
+      "description": "Style–audio similarity",
+      "maximum": 1,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "allmusiccaps",
+      "label": "AllMusicCaps",
+      "description": "Style–audio similarity",
+      "maximum": 1,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "control_overall",
+      "label": "Q3O Control",
+      "description": "Prompt-weighted overall control",
+      "maximum": 5,
+      "lowerIsBetter": false
+    },
+    {
+      "key": "per",
+      "label": "PER",
+      "description": "Phoneme error rate",
+      "maximum": 1,
+      "lowerIsBetter": true
+    }
+  ],
+  "rows": [
+    {
+      "dataset": "WSB",
+      "system": "YuE2",
+      "n": 192,
+      "songbench_global_avg": 6.731599404761909,
+      "songbench_musicality": 5.907463020833336,
+      "songeval_global_avg": 4.262452916666666,
+      "songeval_musicality": 4.2151218749999995,
+      "audiobox_pq": 8.25979095697403,
+      "mulan": 0.5068482221880307,
+      "allmusiccaps": 0.40536119728009606,
+      "control_overall": 4.681896986601725,
+      "per": 0.08443630690279864
+    },
+    {
+      "dataset": "WSB",
+      "system": "YuE2 (best-of-8)",
+      "n": 192,
+      "songbench_global_avg": 6.963229315476184,
+      "songbench_musicality": 6.266602604166664,
+      "songeval_global_avg": 4.296048333333334,
+      "songeval_musicality": 4.250610416666664,
+      "audiobox_pq": 8.271365446348986,
+      "mulan": 0.5050805467180908,
+      "allmusiccaps": 0.398045457637636,
+      "control_overall": 4.70087253751977,
+      "per": 0.09786539961704843
+    },
+    {
+      "dataset": "WSB",
+      "system": "ACE-Step 1.5",
+      "n": 192,
+      "songbench_global_avg": 6.011793824404761,
+      "songbench_musicality": 5.158814583333332,
+      "songeval_global_avg": 3.846484166666666,
+      "songeval_musicality": 3.805107291666667,
+      "audiobox_pq": 8.051833018660545,
+      "mulan": 0.43723272854307044,
+      "allmusiccaps": 0.38685302749703016,
+      "control_overall": 4.580894501177339,
+      "per": 0.07457884998484957
+    },
+    {
+      "dataset": "WSB",
+      "system": "DiffRhythm 2",
+      "n": 192,
+      "songbench_global_avg": 5.242845982142859,
+      "songbench_musicality": 4.477539583333331,
+      "songeval_global_avg": 3.5244677083333333,
+      "songeval_musicality": 3.471093229166668,
+      "audiobox_pq": 7.978225273390611,
+      "mulan": 0.37817035724098486,
+      "allmusiccaps": 0.32549789230688475,
+      "control_overall": 4.087044602340498,
+      "per": 0.18413265339015286
+    },
+    {
+      "dataset": "WSB",
+      "system": "HeartMuLa",
+      "n": 192,
+      "songbench_global_avg": 6.248347544642855,
+      "songbench_musicality": 5.496267708333332,
+      "songeval_global_avg": 4.551859166666667,
+      "songeval_musicality": 4.5329015625,
+      "audiobox_pq": 8.293305036922296,
+      "mulan": 0.3823466453177389,
+      "allmusiccaps": 0.2786190857962841,
+      "control_overall": 3.490655976705673,
+      "per": 0.10705881594471056
+    },
+    {
+      "dataset": "WSB",
+      "system": "LeVo 2",
+      "n": 192,
+      "songbench_global_avg": 6.324671800595234,
+      "songbench_musicality": 5.4589927083333345,
+      "songeval_global_avg": 4.023369479166667,
+      "songeval_musicality": 3.981881250000001,
+      "audiobox_pq": 8.396623315910498,
+      "mulan": 0.3542381529114209,
+      "allmusiccaps": 0.2679880544101252,
+      "control_overall": 3.9457878565807953,
+      "per": 0.26116136186343974
+    },
+    {
+      "dataset": "WSB",
+      "system": "MiniMax Music 2.6",
+      "n": 192,
+      "songbench_global_avg": 6.3221788690476215,
+      "songbench_musicality": 5.443674479166666,
+      "songeval_global_avg": 4.098453333333334,
+      "songeval_musicality": 4.055989583333334,
+      "audiobox_pq": 8.171058195332686,
+      "mulan": 0.42510899043797207,
+      "allmusiccaps": 0.3669951342102043,
+      "control_overall": 4.568809841873251,
+      "per": 0.24545647955335212
+    },
+    {
+      "dataset": "WSB",
+      "system": "MiniMax Music 3",
+      "n": 192,
+      "songbench_global_avg": 6.282988392857145,
+      "songbench_musicality": 5.348229166666669,
+      "songeval_global_avg": 4.099352187500001,
+      "songeval_musicality": 4.0430729166666675,
+      "audiobox_pq": 8.28245102117459,
+      "mulan": 0.39279851930526394,
+      "allmusiccaps": 0.36085424468425725,
+      "control_overall": 4.43616720498247,
+      "per": 0.06268414232388418
+    },
+    {
+      "dataset": "WSB",
+      "system": "Mureka 9",
+      "n": 192,
+      "songbench_global_avg": 6.937748809523812,
+      "songbench_musicality": 6.048820833333333,
+      "songeval_global_avg": 4.411131979166667,
+      "songeval_musicality": 4.361940104166667,
+      "audiobox_pq": 8.022609589000544,
+      "mulan": 0.43942587031051517,
+      "allmusiccaps": 0.41017753163275,
+      "control_overall": 4.636807564214055,
+      "per": 0.11690337887061523
+    },
+    {
+      "dataset": "WSB",
+      "system": "Muse",
+      "n": 192,
+      "songbench_global_avg": 6.034903943452382,
+      "songbench_musicality": 5.169220312499998,
+      "songeval_global_avg": 3.788667708333335,
+      "songeval_musicality": 3.736199999999999,
+      "audiobox_pq": 8.051745663086573,
+      "mulan": 0.3936510290513979,
+      "allmusiccaps": 0.3465821466803997,
+      "control_overall": 4.403758449771435,
+      "per": 0.33418648580693827
+    },
+    {
+      "dataset": "WSB",
+      "system": "SongBloom",
+      "n": 192,
+      "songbench_global_avg": 4.235043750000001,
+      "songbench_musicality": 3.4492635416666655,
+      "songeval_global_avg": 3.2051130208333345,
+      "songeval_musicality": 3.204842187499999,
+      "audiobox_pq": 8.153916046023369,
+      "mulan": 0.2697471845106823,
+      "allmusiccaps": 0.19264957021005102,
+      "control_overall": 3.0286910546158463,
+      "per": 0.19193351857701904
+    },
+    {
+      "dataset": "WSB",
+      "system": "Suno v4.5",
+      "n": 192,
+      "songbench_global_avg": 6.699528199404766,
+      "songbench_musicality": 5.831729166666669,
+      "songeval_global_avg": 4.366563958333332,
+      "songeval_musicality": 4.319757291666664,
+      "audiobox_pq": 8.254062737027803,
+      "mulan": 0.5021767822715143,
+      "allmusiccaps": 0.38734816436772235,
+      "control_overall": 4.41490242329515,
+      "per": 0.05798428222369787
+    },
+    {
+      "dataset": "WSB",
+      "system": "Suno v5",
+      "n": 192,
+      "songbench_global_avg": 6.872074330357141,
+      "songbench_musicality": 5.9918354166666665,
+      "songeval_global_avg": 4.357936874999999,
+      "songeval_musicality": 4.305118229166664,
+      "audiobox_pq": 8.169838989774385,
+      "mulan": 0.5428044088184834,
+      "allmusiccaps": 0.43525151138116297,
+      "control_overall": 4.5907186541713685,
+      "per": 0.080993611026942
+    },
+    {
+      "dataset": "WSB",
+      "system": "Suno v5.5",
+      "n": 192,
+      "songbench_global_avg": 6.714983407738093,
+      "songbench_musicality": 5.808658854166672,
+      "songeval_global_avg": 4.2151607291666675,
+      "songeval_musicality": 4.149727604166669,
+      "audiobox_pq": 8.195489337046942,
+      "mulan": 0.5088621161606474,
+      "allmusiccaps": 0.3917035845806822,
+      "control_overall": 4.591446755445953,
+      "per": 0.05958313723720433
+    },
+    {
+      "dataset": "WSB",
+      "system": "Suno v6",
+      "n": 192,
+      "songbench_global_avg": 6.556171130952383,
+      "songbench_musicality": 5.6557864583333375,
+      "songeval_global_avg": 4.308628645833337,
+      "songeval_musicality": 4.263533854166667,
+      "audiobox_pq": 8.129587392012278,
+      "mulan": 0.4916386870124067,
+      "allmusiccaps": 0.4304573973834825,
+      "control_overall": 4.625818883206533,
+      "per": 0.07580377922906821
+    },
+    {
+      "dataset": "WSB",
+      "system": "Suno v6 Wild",
+      "n": 192,
+      "songbench_global_avg": 6.419507440476191,
+      "songbench_musicality": 5.564441145833332,
+      "songeval_global_avg": 4.219912500000002,
+      "songeval_musicality": 4.171640104166664,
+      "audiobox_pq": 8.178526304662228,
+      "mulan": 0.49989257991546765,
+      "allmusiccaps": 0.43164352465343353,
+      "control_overall": 4.589767688464477,
+      "per": 0.07454661500473854
+    },
+    {
+      "dataset": "WSB",
+      "system": "YuE 1",
+      "n": 192,
+      "songbench_global_avg": 4.916463244047622,
+      "songbench_musicality": 4.084726562499998,
+      "songeval_global_avg": 3.214967395833334,
+      "songeval_musicality": 3.1524088541666675,
+      "audiobox_pq": 7.868339642882347,
+      "mulan": 0.262323199029197,
+      "allmusiccaps": 0.2881557388876293,
+      "control_overall": 3.7300764989993715,
+      "per": 0.3637846445448743
+    }
+  ]
+}
