@@ -60,7 +60,7 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
     from safetensors.torch import save_file
     model_dir = Path(model_dir)
     source = model_identity(model_dir)
-    config = json.loads((model_dir / "config.json").read_text())
+    config = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
     converted = qwen_config(config)
     stamp = {"schema": 1, "source": source, "config": converted}
     key = identity(stamp)
@@ -75,7 +75,7 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
     with (parent / (key + ".lock")).open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if target.exists():
-            manifest = json.loads((target / "derivation.json").read_text())
+            manifest = json.loads((target / "derivation.json").read_text(encoding="utf-8"))
             if manifest.get("identity") != key or manifest.get("source") != source:
                 raise ValueError("AR cache provenance mismatch; remove this derived cache explicitly")
             for name, digest in manifest["sha256"].items():
@@ -272,7 +272,7 @@ class _Worker:
                 if self.process.poll() is not None:
                     break
             self.log.flush()
-            details = self.log_path.read_text(errors="replace")[-12000:]
+            details = self.log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
             self.close()
             raise RuntimeError(f"vLLM worker exited without a result: {details}")
 
@@ -358,7 +358,7 @@ async def _worker_main():
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.v1.engine.async_llm import AsyncLLM
     derived = derive_ar_checkpoint(setup["model_dir"])
-    config = json.loads((derived / "config.json").read_text())
+    config = json.loads((derived / "config.json").read_text(encoding="utf-8"))
     total = torch.cuda.get_device_properties(0).total_memory
     budget = min(setup["memory_budget_gib"] * 2**30, total)
     kv_bytes = kv_cache_bytes(config)

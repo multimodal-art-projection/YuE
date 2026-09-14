@@ -39,8 +39,8 @@ def test_model_export_omits_unlisted_code_reports_and_cache(tmp_path):
     assert not (exported / 'notes.json').exists()
     assert not (exported / 'extra_model.py').exists()
     assert not (exported / '.cache').exists()
-    assert 'DO_NOT_EXPORT' not in (exported / 'config.json').read_text()
-    assert 'DO_NOT_EXPORT' not in (exported / 'modeling_yue2.py').read_text()
+    assert 'DO_NOT_EXPORT' not in (exported / 'config.json').read_text(encoding='utf-8')
+    assert 'DO_NOT_EXPORT' not in (exported / 'modeling_yue2.py').read_text(encoding='utf-8')
     restored = AutoModelForCausalLM.from_pretrained(exported, trust_remote_code=True).eval()
     ids = torch.tensor([[1, 5, 3]])
     with torch.inference_mode():
