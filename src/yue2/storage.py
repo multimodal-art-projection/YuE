@@ -128,6 +128,22 @@ def collect_hashes(directory, exclude=("result.json",)):
             for p in sorted(directory.rglob("*")) if p.is_file() and p.name not in exclude}
 
 
+def verify_files(directory, hashes):
+    """Check whether every named file under directory still matches its recorded size/sha256.
+
+    Returns False (rather than raising) on a missing or corrupt file so callers can treat an
+    untrustworthy stage as simply not-yet-done instead of a hard error.
+    """
+    directory = Path(directory)
+    for name, expected in hashes.items():
+        p = directory / name
+        if Path(name).is_absolute() or not p.resolve().is_relative_to(directory.resolve()):
+            raise ValueError("Invalid artifact path")
+        if not p.is_file() or p.stat().st_size != expected["bytes"] or sha256_file(p) != expected["sha256"]:
+            return False
+    return True
+
+
 def verify_result(directory, expected_identity=None):
     directory = Path(directory)
     result = json.loads((directory / "result.json").read_text())
