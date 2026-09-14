@@ -10,10 +10,55 @@ import numpy as np
 import torch
 
 from .protocol import SongRequest, GenerationConfig, Sampling, token_prefixes, negative_prefix, CODEC_OFFSET, resolve_sampling
-from .storage import resolve_model, model_identity, identity, write_json, collect_hashes, sha256_file, copy_model_files
+from .storage import (resolve_model, model_identity, identity, write_json, collect_hashes, sha256_file,
+                      copy_model_files, verify_result, verify_files)
 from .tokenization_yue2 import YuE2TextTokenizer
 from .sampling import generate_tokens, synchronize
 from .progress import Progress
+
+RUN_STATE_SCHEMA_VERSION = 1
+
+
+def _hash_entry(path):
+    path = Path(path)
+    return {"sha256": sha256_file(path), "bytes": path.stat().st_size}
+
+
+@dataclass
+class RunState:
+    """Per-stage artifact hashes for a run directory, used to verify and resume it.
+
+    `identity` binds the state to the exact request/config/weights that produced it (the
+    same identity `verify_result` already checks for a fully completed run). A stage is
+    trusted on resume only if its recorded files still hash-match on disk; anything else
+    (missing manifest, tampered file, an older schema) is treated as not-yet-done rather
+    than a hard error, so a crash always falls back to safely recomputing that stage.
+    """
+    identity: str
+    stage_hashes: dict = field(default_factory=dict)
+    schema_version: int = RUN_STATE_SCHEMA_VERSION
+
+    def save(self, directory):
+        write_json(Path(directory) / "run_state.json", dataclasses.asdict(self))
+
+    @classmethod
+    def load(cls, directory):
+        path = Path(directory) / "run_state.json"
+        if not path.is_file():
+            return None
+        data = json.loads(path.read_text())
+        if data.get("schema_version") != RUN_STATE_SCHEMA_VERSION:
+            return None
+        return cls(data["identity"], dict(data["stage_hashes"]), data["schema_version"])
+
+    def record(self, directory, stage, hashes):
+        self.stage_hashes = {**self.stage_hashes, stage: hashes}
+        self.save(directory)
+        return self
+
+    def verified(self, directory, stage):
+        hashes = self.stage_hashes.get(stage)
+        return hashes is not None and verify_files(directory, hashes)
 
 
 @dataclass
@@ -396,3 +441,88 @@ class YuE2Pipeline:
         Progress(enabled=self.progress).complete(len(audio) / 48000, timing["e2e_seconds"],
                                                 truncated=plan.truncated or semantic.truncated)
         return SongResult(audio, 48000, semantic, latents, config, self.weights, timing, request_id)
+
+    def generate_resumable(self, directory, style=None, lyrics=None, *, tags=None, abc_sampling=None,
+                           semantic_sampling=None, cancelled=None, on_token=None, resume=False, **kwargs):
+        """Run plan -> semantic -> synthesis -> decode like __call__, but persist each stage to
+        `directory` as soon as it completes.
+
+        With resume=True, an interrupted run can be repeated with the same arguments and
+        directory: any stage whose saved artifacts still verify is loaded from disk instead of
+        recomputed, and generation continues from the first stage that is missing or invalid.
+        Returns {"resumed": bool, "result": <the same dict SongResult.save_artifacts returns>}.
+        """
+        directory = Path(directory)
+        request = self._request(style, lyrics, tags=tags, **kwargs)
+        config = self.effective_config(request, abc_sampling, semantic_sampling)
+        expected_identity = identity({"request": request.to_dict(), "config": config, "weights": self.weights})
+        if resume and (directory / "result.json").exists():
+            return {"resumed": True, "result": verify_result(directory, expected_identity)}
+        if directory.exists() and any(directory.iterdir()) and not resume:
+            raise FileExistsError(f"Nonempty output {directory}; use resume=True or a new output directory")
+        directory.mkdir(parents=True, exist_ok=True)
+
+        state = RunState.load(directory) if resume else None
+        if state is not None and state.identity != expected_identity:
+            raise ValueError("Request/config/weight identity changed; use a new output directory")
+        if state is None:
+            state = RunState(expected_identity)
+
+        # A later stage is only ever reused if the stage(s) it depends on were themselves
+        # reused (not just independently hash-valid): once a stage has to be recomputed, every
+        # stage after it is recomputed too, so a stale downstream artifact can never be paired
+        # with a freshly regenerated upstream one.
+        start = time.perf_counter()
+        plan, plan_reused = None, False
+        if resume:
+            try:
+                candidate = SymbolicPlan.load(directory)
+                if candidate.request.to_dict() == request.to_dict():
+                    plan, plan_reused = candidate, True
+            except Exception:
+                plan = None
+        if plan is None:
+            plan = self.plan(request=request, abc_sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
+            plan.save(directory)
+
+        semantic, semantic_reused = None, False
+        if plan_reused and state.verified(directory, "semantic"):
+            try:
+                meta = json.loads((directory / "semantic_meta.json").read_text())
+                tokens = np.load(directory / "semantic.npy", allow_pickle=False).astype(int).tolist()
+                semantic, semantic_reused = SemanticResult(plan, tokens, meta["timing"], meta["truncated"]), True
+            except Exception:
+                semantic = None
+        if semantic is None:
+            semantic = self.generate_semantic(plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token)
+            np.save(directory / "semantic.npy", np.asarray(semantic.tokens, dtype=np.int32))
+            write_json(directory / "semantic_meta.json", {"timing": semantic.timing, "truncated": semantic.truncated})
+            state.record(directory, "semantic", {"semantic.npy": _hash_entry(directory / "semantic.npy")})
+
+        latents, nar_seconds = None, None
+        if semantic_reused and state.verified(directory, "synthesis"):
+            try:
+                meta = json.loads((directory / "synthesis_meta.json").read_text())
+                latents = np.load(directory / "latent.npy", allow_pickle=False)
+                nar_seconds = meta["nar_seconds"]
+            except Exception:
+                latents = None
+        if latents is None:
+            nar_start = time.perf_counter()
+            latents = self.synthesize(semantic, cancelled=cancelled)
+            nar_seconds = time.perf_counter() - nar_start
+            np.save(directory / "latent.npy", latents.astype(np.float32))
+            write_json(directory / "synthesis_meta.json", {"nar_seconds": nar_seconds})
+            state.record(directory, "synthesis", {"latent.npy": _hash_entry(directory / "latent.npy")})
+
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Cancelled before VAE")
+        vae_start = time.perf_counter()
+        audio = self.decode(latents)
+        timing = {"abc": plan.timing, "semantic": semantic.timing, "nar_seconds": nar_seconds,
+                  "vae_seconds": time.perf_counter() - vae_start, "load": dict(self.load_timing),
+                  "e2e_seconds": time.perf_counter() - start}
+        Progress(enabled=self.progress).complete(len(audio) / 48000, timing["e2e_seconds"],
+                                                truncated=plan.truncated or semantic.truncated)
+        result = SongResult(audio, 48000, semantic, latents, config, self.weights, timing, expected_identity)
+        return {"resumed": False, "result": result.save_artifacts(directory)}

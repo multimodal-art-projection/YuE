@@ -118,20 +118,34 @@ def generate(args):
         result = verify_result(directory, expected)
         print(json.dumps({"resumed": True, "result": str(directory / "result.json"), "truncated": result["truncated"]}))
         return 0
-    if directory.exists() and any(directory.iterdir()):
+    if directory.exists() and any(directory.iterdir()) and not args.resume:
         raise FileExistsError(f"Nonempty output {directory}; use --resume or a new output directory")
     directory.mkdir(parents=True, exist_ok=True)
     try:
         if args.stage == "plan":
+            from .pipeline import SymbolicPlan
             kwargs.pop("semantic_sampling", None)
-            plan = pipe.plan(**kwargs)
-            plan.save(directory)
+            plan = None
+            if args.resume:
+                req_kwargs = {k: v for k, v in kwargs.items() if k != "abc_sampling"}
+                try:
+                    candidate = SymbolicPlan.load(directory)
+                    if candidate.request.to_dict() == pipe._request(**req_kwargs).to_dict():
+                        plan = candidate
+                except Exception:
+                    plan = None
+            if plan is None:
+                plan = pipe.plan(**kwargs)
+                plan.save(directory)
             print(json.dumps({"stage": "plan", "output": str(directory), "truncated": plan.truncated}))
         else:
-            result = pipe(**kwargs)
-            result.save_artifacts(directory)
-            print(json.dumps({"status": "complete", "output": str(directory), "truncated": result.truncated,
-                              "seconds": result.timing["e2e_seconds"]}))
+            # Stages are checkpointed under `directory` as they complete, so a crash after any
+            # completed stage (plan/semantic/synthesis) can continue from there with --resume
+            # instead of recomputing the whole song.
+            receipt = pipe.generate_resumable(directory, resume=args.resume, **kwargs)
+            saved = receipt["result"]
+            print(json.dumps({"status": "complete", "output": str(directory), "resumed": receipt["resumed"],
+                              "truncated": saved["truncated"], "seconds": saved["timing"]["e2e_seconds"]}))
         return 0
     except BaseException as exc:
         write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
@@ -161,15 +175,9 @@ def batch(args):
                 kwargs["cot"] = args.cot
             directory = output / row["id"]
             try:
-                request = pipe._request(**{k:v for k,v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}})
-                cfg = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
-                expected = identity({"request": request.to_dict(), "config": cfg, "weights": pipe.weights})
-                if args.resume and (directory / "result.json").exists():
-                    receipt = verify_result(directory, expected)
-                else:
-                    if directory.exists() and any(directory.iterdir()):
-                        raise FileExistsError("Nonempty request output; use --resume or a new run")
-                    receipt = pipe(**kwargs).save_artifacts(directory)
+                # Checkpointed the same way as `generate`: a crash partway through one song
+                # resumes from its last completed stage instead of restarting the whole batch row.
+                receipt = pipe.generate_resumable(directory, resume=args.resume, **kwargs)["result"]
                 receipts.append({"id": row["id"], "status": "complete", "identity": receipt["identity"]})
             except Exception as exc:
                 failures += 1

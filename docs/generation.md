@@ -50,6 +50,23 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 
 `SymbolicPlan.load` restores exact token IDs and checks the saved files. Use it for an unchanged plan. To change the composition, copy the ABC, edit the copy, and submit it as a new `abc` input; do not change a saved plan in place. The end-to-end `save_artifacts()` path is the simplest way to retain a complete generation record.
 
+## Resuming an interrupted generation
+
+`pipe(**request)` keeps everything in memory until the very end; if the process is killed partway through a long song, nothing is saved. `generate_resumable` instead checkpoints `plan.json`, `semantic.npy`, and `latent.npy` to `directory` as each stage finishes:
+
+```python
+receipt = pipe.generate_resumable("outputs/song", **request, resume=True)
+print(receipt["resumed"], receipt["result"]["truncated"])
+```
+
+Call it again with `resume=True` and the same `directory`/request after a crash: any stage whose saved files still verify against the current request, model, and config identity is loaded from disk instead of recomputed, and generation continues from the first missing or invalid stage. A stage is only reused if the stage(s) it depends on were themselves reused, so a stale downstream artifact is never paired with a freshly regenerated upstream one. The CLI does this automatically:
+
+```bash
+yue2 generate --request examples/song.json --output outputs/song-cli --resume
+```
+
+Re-running the same command after an interruption (crash, OOM, `Ctrl-C`) resumes from the last completed stage; a fully completed run returns the existing `result.json` unchanged. `yue2 generate --stage plan --resume` similarly reuses a previously saved plan instead of replanning.
+
 ## Outputs and reproducibility
 
 `save_artifacts()` retains `audio.flac`, `score.abc` when applicable, `plan.json`, semantic tokens, `latent.npy`, effective configuration, timings, model identities, and integrity records. Inspect `result.json` and its `truncated` flags. Saved audio can be playable even when the model hit a token limit. Use a fresh directory for each changed request and retain failures in comparisons.
