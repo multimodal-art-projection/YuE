@@ -1,0 +1,17 @@
+# Compact provenance for the exact-commit validation runs documented in
+# ../mps-long-context-evidence.md. Large audio files are not committed.
+# Format: SHA-256, byte count, artifact path in the local validation bundle.
+
+# Exact submitted source, 9,000-token memory-trace run, 360.0 s audio
+fb77bc38a8d53c74e521429cb2a9d45ae68d701288a1b32ef37768a3137ac5f5  3261  deep_resampling_mps_final_9k_memlog/result.json
+a177d763f8691d8cabe518cedc19b0fa0e07b9d455f0c383840a931de770e664  1265  deep_resampling_mps_final_9k_memlog/config.json
+639ae1fb4ac7ea91a961571b8ed2a0c46ee086d1cb92ccb28ee63682f2e8b483  36128  deep_resampling_mps_final_9k_memlog/semantic.npy
+7733600cd5b610c533dcdccba253dc7d18a2f6d7512d611eb2ceb2e5b3ddc6b0  48383907  deep_resampling_mps_final_9k_memlog/audio.flac
+3ade38ad09c6ff96528bd34bfd29a2d10e6f07e2e5428c71af0860667715dfc5  21733  deep_resampling_mps_final_9k_memlog/worker.log
+
+# Exact submitted source, 13,500-token end-to-end run, 540.0 s audio
+bcb46285311af47a9d76b0cbae5c9391df684321217b680d5e8ead767a4c3c62  3257  deep_resampling_mps_final_9m/result.json
+95433bda2db8fb752d8ae3928bedc1bcf08b6a01227cc8051a16b2f1a3d54d18  1269  deep_resampling_mps_final_9m/config.json
+67dac972e8c63fe68cdf7b2f31948de5162d2bcd57c3fcefcad49861a8803674  54128  deep_resampling_mps_final_9m/semantic.npy
+cd59ac969d6affa4c94c123cb7d3977b20ec2045f256020a61f87dc469546a76  62292881  deep_resampling_mps_final_9m/audio.flac
+cc9f60075978a55f4afbd8054d42bbf25be5c88f35e0b51a7e52164b5fb6dd73  25270  deep_resampling_mps_final_9m/worker.log

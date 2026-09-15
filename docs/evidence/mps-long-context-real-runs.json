@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "reviewed_commit": "8db0b9b4a058840ad1a2e71c1fffd645ae081de2",
+  "model_revision": "29b3558dd46954a0cd9021dc76d5c91864a0f1c7",
+  "vae_revision": "9a94e1d0ea9f8087e98f77fa88df4a4068104d2a",
+  "environment": {
+    "model": "MacBook Pro Mac17,6",
+    "chip": "Apple M5 Max",
+    "memory_gib": 128,
+    "architecture": "arm64",
+    "macos": "26.5.1 (25F80)",
+    "python": "3.12.9",
+    "torch": "2.10.0",
+    "transformers": "4.57.6",
+    "device": "mps",
+    "model_dtype": "bfloat16",
+    "empty_cache_calls": 0
+  },
+  "runs": [
+    {
+      "name": "exact_commit_memory_trace",
+      "semantic_tokens": 9000,
+      "semantic_seconds": 360.9688880830072,
+      "semantic_tokens_per_second": 24.93289670419017,
+      "audio_seconds": 359.9986666666667,
+      "end_to_end_seconds": 1194.0677035001572,
+      "status": "complete",
+      "peak_sampled_allocated_gib": 8.10,
+      "peak_sampled_driver_gib": 9.42,
+      "last_memory_sample_token": 8960,
+      "memory_trace": "mps-long-context-real-memory.csv",
+      "result_sha256": "fb77bc38a8d53c74e521429cb2a9d45ae68d701288a1b32ef37768a3137ac5f5",
+      "audio_sha256": "7733600cd5b610c533dcdccba253dc7d18a2f6d7512d611eb2ceb2e5b3ddc6b0"
+    },
+    {
+      "name": "exact_commit_end_to_end",
+      "semantic_tokens": 13500,
+      "semantic_seconds": 563.5976210420486,
+      "semantic_tokens_per_second": 23.95325937508313,
+      "nar_steps_completed": 64,
+      "nar_steps_requested": 64,
+      "audio_decode_chunks_completed": 14,
+      "audio_decode_chunks_requested": 14,
+      "audio_seconds": 539.9986666666666,
+      "end_to_end_seconds": 1647.8786162920296,
+      "status": "complete",
+      "result_sha256": "bcb46285311af47a9d76b0cbae5c9391df684321217b680d5e8ead767a4c3c62",
+      "audio_sha256": "cd59ac969d6affa4c94c123cb7d3977b20ec2045f256020a61f87dc469546a76"
+    }
+  ],
+  "earlier_revision_observation": {
+    "semantic_tokens": 18000,
+    "audio_seconds": 720.0,
+    "sampled_allocated_gib": 10.75,
+    "sampled_driver_gib": 11.94,
+    "last_memory_sample_token": 16640,
+    "status": "complete",
+    "note": "Earlier bucketed revision, not the final cleanup commit; retained only as supporting evidence."
+  }
+}
