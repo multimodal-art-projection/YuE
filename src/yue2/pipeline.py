@@ -16,7 +16,33 @@ from .tokenization_yue2 import YuE2TextTokenizer
 from .sampling import generate_tokens, synchronize
 from .progress import Progress
 
-RUN_STATE_SCHEMA_VERSION = 1
+RUN_STATE_SCHEMA_VERSION = 2
+
+# Explicit generation lifecycle. Each "*_failed" state is a branch off the last stage that
+# actually succeeded, so a manifest always says exactly how far a run got and, if it didn't
+# finish, at which stage it stopped. TRANSITIONS lists the only states reachable from each
+# state (besides staying put, which is always allowed and covers a retry that fails again);
+# reaching "complete" always goes through save_artifacts()/result.json, not through RunState.
+TRANSITIONS = {
+    "created": {"planned", "plan_failed"},
+    "plan_failed": {"planned", "plan_failed"},
+    "planned": {"semantic_generated", "semantic_failed"},
+    "semantic_failed": {"semantic_generated", "semantic_failed"},
+    "semantic_generated": {"synthesized", "synthesis_failed"},
+    "synthesis_failed": {"synthesized", "synthesis_failed"},
+    "synthesized": {"complete", "decode_failed"},
+    "decode_failed": {"complete", "decode_failed"},
+}
+
+# The stage_hashes keys a state can only be reached with, so a hand-edited or truncated
+# manifest claiming more progress than its own hashes back up is rejected on load rather
+# than trusted.
+REQUIRED_STAGE_HASHES = {
+    "created": frozenset(), "plan_failed": frozenset(), "planned": frozenset(), "semantic_failed": frozenset(),
+    "semantic_generated": frozenset({"semantic"}), "synthesis_failed": frozenset({"semantic"}),
+    "synthesized": frozenset({"semantic", "synthesis"}), "decode_failed": frozenset({"semantic", "synthesis"}),
+    "complete": frozenset({"semantic", "synthesis"}),
+}
 
 
 def _hash_entry(path):
@@ -26,16 +52,21 @@ def _hash_entry(path):
 
 @dataclass
 class RunState:
-    """Per-stage artifact hashes for a run directory, used to verify and resume it.
+    """Explicit, persisted generation state for a run directory: which lifecycle state it
+    reached (see TRANSITIONS) and the per-stage artifact hashes backing that state up.
 
     `identity` binds the state to the exact request/config/weights that produced it (the
     same identity `verify_result` already checks for a fully completed run). A stage is
     trusted on resume only if its recorded files still hash-match on disk; anything else
-    (missing manifest, tampered file, an older schema) is treated as not-yet-done rather
-    than a hard error, so a crash always falls back to safely recomputing that stage.
+    (missing manifest, tampered file, an inconsistent state/hash pairing, an older schema)
+    is treated as not-yet-done rather than a hard error, so a crash always falls back to
+    safely recomputing that stage. `plan` has no hash entry here: it verifies itself via
+    SymbolicPlan's own manifest, so "planned" only ever records that plan.plan() ran, not a
+    hash to check.
     """
     identity: str
     stage_hashes: dict = field(default_factory=dict)
+    state: str = "created"
     schema_version: int = RUN_STATE_SCHEMA_VERSION
 
     def save(self, directory):
@@ -49,11 +80,38 @@ class RunState:
         data = json.loads(path.read_text())
         if data.get("schema_version") != RUN_STATE_SCHEMA_VERSION:
             return None
-        return cls(data["identity"], dict(data["stage_hashes"]), data["schema_version"])
+        state, stage_hashes = data.get("state"), dict(data.get("stage_hashes", {}))
+        required = REQUIRED_STAGE_HASHES.get(state)
+        if required is None or not required <= set(stage_hashes):
+            return None
+        return cls(data["identity"], stage_hashes, state, data["schema_version"])
 
-    def record(self, directory, stage, hashes):
-        self.stage_hashes = {**self.stage_hashes, stage: hashes}
+    def transition(self, directory, to_state, stage_hashes=None):
+        """Move to to_state, recording any newly completed stage's hashes with it.
+
+        Raises ValueError for a transition TRANSITIONS does not list (a bug in the caller,
+        not a runtime/data problem) rather than persisting an inconsistent state.
+        """
+        if to_state != self.state and to_state not in TRANSITIONS.get(self.state, set()):
+            raise ValueError(f"Invalid generation state transition: {self.state} -> {to_state}")
+        if stage_hashes:
+            self.stage_hashes = {**self.stage_hashes, **stage_hashes}
+        self.state = to_state
         self.save(directory)
+        return self
+
+    def rebase(self, directory, to_state):
+        """Force the state down to to_state, bypassing TRANSITIONS validation.
+
+        Hash verification, not the persisted state label, is what decides a stage must be
+        redone: once verified() has found a stage's own recorded artifact no longer holds up,
+        anything the state label still claims beyond that stage is stale by construction, no
+        matter how it got there. Call this right before recomputing such a stage, to land on
+        its known-good predecessor state before transition() validates the real next step.
+        """
+        if to_state != self.state:
+            self.state = to_state
+            self.save(directory)
         return self
 
     def verified(self, directory, stage):
@@ -482,8 +540,20 @@ class YuE2Pipeline:
             except Exception:
                 plan = None
         if plan is None:
-            plan = self.plan(request=request, abc_sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
+            # Whatever the state label claimed (e.g. it once reached "synthesized" before its
+            # plan files went missing or stopped matching this request) no longer holds once
+            # plan itself is being recomputed.
+            state.rebase(directory, "created")
+            try:
+                plan = self.plan(request=request, abc_sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
+            except BaseException:
+                state.transition(directory, "plan_failed")
+                raise
             plan.save(directory)
+        if state.state in ("created", "plan_failed"):
+            # Covers both a fresh/retried plan above and a plan reused from a directory whose
+            # run_state.json doesn't exist yet (e.g. a standalone `--stage plan` output).
+            state.transition(directory, "planned")
 
         semantic, semantic_reused = None, False
         if plan_reused and state.verified(directory, "semantic"):
@@ -494,10 +564,19 @@ class YuE2Pipeline:
             except Exception:
                 semantic = None
         if semantic is None:
-            semantic = self.generate_semantic(plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token)
+            # Whatever the state label claimed beyond "planned" (e.g. a corrupted semantic.npy
+            # discovered by verified() above, even if it once reached "synthesized" or further)
+            # no longer holds once semantic itself is being recomputed.
+            state.rebase(directory, "planned")
+            try:
+                semantic = self.generate_semantic(plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token)
+            except BaseException:
+                state.transition(directory, "semantic_failed")
+                raise
             np.save(directory / "semantic.npy", np.asarray(semantic.tokens, dtype=np.int32))
             write_json(directory / "semantic_meta.json", {"timing": semantic.timing, "truncated": semantic.truncated})
-            state.record(directory, "semantic", {"semantic.npy": _hash_entry(directory / "semantic.npy")})
+            state.transition(directory, "semantic_generated",
+                             {"semantic": {"semantic.npy": _hash_entry(directory / "semantic.npy")}})
 
         latents, nar_seconds = None, None
         if semantic_reused and state.verified(directory, "synthesis"):
@@ -508,21 +587,39 @@ class YuE2Pipeline:
             except Exception:
                 latents = None
         if latents is None:
+            # Same reasoning as above, one stage later: a stale "synthesized"-or-further label
+            # from before a corrupted latent.npy was discovered no longer holds.
+            state.rebase(directory, "semantic_generated")
             nar_start = time.perf_counter()
-            latents = self.synthesize(semantic, cancelled=cancelled)
+            try:
+                latents = self.synthesize(semantic, cancelled=cancelled)
+            except BaseException:
+                state.transition(directory, "synthesis_failed")
+                raise
             nar_seconds = time.perf_counter() - nar_start
             np.save(directory / "latent.npy", latents.astype(np.float32))
             write_json(directory / "synthesis_meta.json", {"nar_seconds": nar_seconds})
-            state.record(directory, "synthesis", {"latent.npy": _hash_entry(directory / "latent.npy")})
+            state.transition(directory, "synthesized",
+                             {"synthesis": {"latent.npy": _hash_entry(directory / "latent.npy")}})
 
         if cancelled is not None and cancelled():
+            state.transition(directory, "decode_failed")
             raise InterruptedError("Cancelled before VAE")
         vae_start = time.perf_counter()
-        audio = self.decode(latents)
+        try:
+            audio = self.decode(latents)
+        except BaseException:
+            state.transition(directory, "decode_failed")
+            raise
         timing = {"abc": plan.timing, "semantic": semantic.timing, "nar_seconds": nar_seconds,
                   "vae_seconds": time.perf_counter() - vae_start, "load": dict(self.load_timing),
                   "e2e_seconds": time.perf_counter() - start}
         Progress(enabled=self.progress).complete(len(audio) / 48000, timing["e2e_seconds"],
                                                 truncated=plan.truncated or semantic.truncated)
         result = SongResult(audio, 48000, semantic, latents, config, self.weights, timing, expected_identity)
-        return {"resumed": False, "result": result.save_artifacts(directory)}
+        saved = result.save_artifacts(directory)
+        # result.json now carries this run to completion on its own (verify_result is the
+        # fast path checked at the top of the next call), but recording it here too keeps
+        # run_state.json's state accurate for anyone inspecting it directly.
+        state.transition(directory, "complete")
+        return {"resumed": False, "result": saved}

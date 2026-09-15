@@ -148,8 +148,10 @@ def generate(args):
                               "truncated": saved["truncated"], "seconds": saved["timing"]["e2e_seconds"]}))
         return 0
     except BaseException as exc:
+        from .pipeline import RunState
+        state = RunState.load(directory)
         write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
-                                                "request": data})
+                                                "request": data, "state": state.state if state else None})
         raise
     finally:
         pipe.close()
@@ -180,8 +182,11 @@ def batch(args):
                 receipt = pipe.generate_resumable(directory, resume=args.resume, **kwargs)["result"]
                 receipts.append({"id": row["id"], "status": "complete", "identity": receipt["identity"]})
             except Exception as exc:
+                from .pipeline import RunState
                 failures += 1
-                failure = {"id": row["id"], "status": "failed", "reason": str(exc), "type": type(exc).__name__}
+                state = RunState.load(directory)
+                failure = {"id": row["id"], "status": "failed", "reason": str(exc), "type": type(exc).__name__,
+                          "state": state.state if state else None}
                 write_json(directory / "failure.json", failure)
                 receipts.append(failure)
             write_json(output / "batch.json", {"complete": len(receipts) == len(rows) and not failures,
