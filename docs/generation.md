@@ -67,6 +67,19 @@ yue2 generate --request examples/song.json --output outputs/song-cli --resume
 
 Re-running the same command after an interruption (crash, OOM, `Ctrl-C`) resumes from the last completed stage; a fully completed run returns the existing `result.json` unchanged. `yue2 generate --stage plan --resume` similarly reuses a previously saved plan instead of replanning.
 
+### Inspecting a run's state
+
+Alongside those files, `directory/run_state.json` records an explicit lifecycle state: `created` → `planned` → `semantic_generated` → `synthesized` → `complete`, or a `*_failed` variant (`plan_failed`, `semantic_failed`, `synthesis_failed`, `decode_failed`) branching off the last stage that actually succeeded. Read it directly, or with `RunState.load`:
+
+```python
+from yue2 import RunState
+
+state = RunState.load("outputs/song")
+print(state.state)  # e.g. "synthesis_failed" after a crash, "complete" once done
+```
+
+A run interrupted by `Ctrl-C` or a crash leaves `directory/failure.json` with the same `state`, so a failed batch row or `generate` call says exactly which stage stopped it without needing to open `run_state.json` separately. Only transitions that lifecycle allows are ever written; loading a manifest whose recorded state claims more progress than its own stage hashes back up (hand-edited, truncated, from an older schema) is rejected the same way a corrupt file is, and generation falls back to redoing the affected stages rather than trusting it.
+
 ## Outputs and reproducibility
 
 `save_artifacts()` retains `audio.flac`, `score.abc` when applicable, `plan.json`, semantic tokens, `latent.npy`, effective configuration, timings, model identities, and integrity records. Inspect `result.json` and its `truncated` flags. Saved audio can be playable even when the model hit a token limit. Use a fresh directory for each changed request and retain failures in comparisons.

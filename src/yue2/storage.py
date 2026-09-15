@@ -122,7 +122,11 @@ def model_identity(path, verify=True):
     return {"files": entries, "config_sha256": sha256_file(path / "config.json")}
 
 
-def collect_hashes(directory, exclude=("result.json",)):
+def collect_hashes(directory, exclude=("result.json", "run_state.json", "semantic_meta.json", "synthesis_meta.json")):
+    # run_state.json/*_meta.json are internal resume bookkeeping, not part of the verified
+    # result: run_state.json is itself rewritten (to "complete") right after this manifest is
+    # computed, so freezing its hash into result.json would make every finished run look
+    # corrupt on its very next --resume check.
     directory = Path(directory)
     return {str(p.relative_to(directory)): {"sha256": sha256_file(p), "bytes": p.stat().st_size}
             for p in sorted(directory.rglob("*")) if p.is_file() and p.name not in exclude}
