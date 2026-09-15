@@ -14,6 +14,7 @@ from typing import Callable, Sequence
 import torch
 import torch.nn.functional as F
 
+from .modeling_yue2 import _needs_mps_causal_mask
 from .protocol import CODEC_OFFSET, CODEC_SIZE, CONTEXT, MUSIC_END, chunk_ranges
 
 
@@ -89,12 +90,12 @@ def attention(q, k, v, *, causal=False, backend="sdpa", query_chunk_size=None):
             # is_causal on a rectangular Q/K uses an upper-left triangle, so a
             # later query block needs its absolute query positions explicitly.
             mask = None
-            if causal and start:
+            if causal and (start or _needs_mps_causal_mask(q)):
                 mask = (torch.arange(end, device=q.device)[None, :] <=
                         torch.arange(start, end, device=q.device)[:, None])
             outputs.append(F.scaled_dot_product_attention(
                 query[..., start:end, :], used_key, used_value,
-                attn_mask=mask, is_causal=causal and start == 0, enable_gqa=grouped,
+                attn_mask=mask, is_causal=causal and mask is None, enable_gqa=grouped,
             ))
     return torch.cat(outputs, dim=-2)[0].transpose(0, 1)
 
