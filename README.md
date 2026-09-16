@@ -261,7 +261,7 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
       <sub>Chinese-speaking users</sub>
     </td>
     <td align="center" width="50%">
-      <a href="https://discord.gg/ssAyWMnMzu"><strong>🌐 Join Discord ↗</strong></a><br>
+      <a href="https://discord.gg/ssAyWMnMzu"><strong>🌐&nbsp;Join&nbsp;Discord</strong></a><br>
       <sub>Global users</sub>
     </td>
   </tr>
