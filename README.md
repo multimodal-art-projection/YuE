@@ -257,11 +257,11 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>💬 WeChat</strong><br>
+      <strong><img src="assets/wechat.svg" width="20" height="20" alt="" />&nbsp;WeChat</strong><br>
       <sub>Chinese-speaking users</sub>
     </td>
     <td align="center" width="50%">
-      <a href="https://discord.gg/ssAyWMnMzu"><strong>🌐&nbsp;Join&nbsp;Discord</strong></a><br>
+      <a href="https://discord.gg/ssAyWMnMzu"><strong><img src="assets/discord.svg" width="20" height="20" alt="" />&nbsp;Join&nbsp;Discord</strong></a><br>
       <sub>Global users</sub>
     </td>
   </tr>
