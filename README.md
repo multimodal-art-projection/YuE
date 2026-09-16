@@ -220,21 +220,19 @@ MERT2 feature extraction is optional for generation. YuE2's pipeline does not re
 
 ## License
 
-**Individuals, creators, and musicians.** Personal users, content creators, and musicians may use YuE2 and monetize their generated outputs **without paying us any fees or royalties**, under the additional permission in [MODEL_LICENSE](MODEL_LICENSE).
+| Use | Terms |
+| --- | --- |
+| **Personal users, content creators, and musicians** | Free to use YuE2 and monetize generated outputs, with **no fees or royalties payable to us**. |
+| **Academic research and education** | Free for **non-commercial use**. |
+| **Commercial use by companies** | [Contact us](#contact) to discuss a commercial license for the model weights. |
 
-**Academic use.** Students, educators, researchers, and academic institutions may use YuE2 **free of charge for non-commercial research and education**.
+We strongly encourage crediting **YuE2** or using **#YuE2** when sharing generated work; attribution is optional.
 
-We strongly encourage you to credit **YuE2** or include **#YuE2** when sharing your work. Credit on generated outputs is optional.
+**Responsible use.** The additional creator permission prohibits illegal, harmful, deceptive, or unethical use. YuE2 is provided **as is, without warranties**. Users are responsible for their inputs, outputs, and use; liability limits are set out in the [full terms](MODEL_LICENSE).
 
-**Commercial use by companies.** For commercial use of YuE2's model weights by companies, please [contact us](#contact) to discuss a commercial license.
+**Code, agent skill, and documentation:** [Apache 2.0](LICENSE). **Model weights:** [CC BY-NC 4.0 with additional creator permission](MODEL_LICENSE).
 
-**Responsible use and disclaimer.** The additional model permission prohibits illegal, harmful, deceptive, or otherwise unethical use, including fraud, harassment, and deceptive impersonation. YuE2 is provided **as is, without warranties**. Users are responsible for their inputs, outputs, and use of the model, including obtaining any necessary rights and consent. To the extent permitted by law, the authors are not liable for misuse or resulting losses.
-
-YuE2's first-party code, agent skill, and documentation are licensed under **[Apache 2.0](LICENSE)**. Copyright (c) 2026 the YuE2 authors.
-
-Model weights are separately licensed under **CC BY-NC 4.0**, with the additional permission above; see [MODEL_LICENSE](MODEL_LICENSE) for the full terms. Third-party components retain their [original licenses](THIRD_PARTY_NOTICES.md). The archived [YuE-v1 branch](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1) retains its original license.
-
-Apache 2.0 applies to the current repository source; the earlier `yue2-v0.1.6` download archives retain their bundled licenses.
+*Copyright (c) 2026 the YuE2 authors. [Third-party components](THIRD_PARTY_NOTICES.md) and earlier releases retain their respective licenses.*
 
 ## Citation
 
