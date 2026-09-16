@@ -17,6 +17,7 @@
 
 <p align="center">
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
+  <a href="https://arena.3-148-255-99.sslip.io:8080">🗳️ Music Arena</a> ·
   <a href="https://huggingface.co/m-a-p/YuE2-3B">🤗 YuE2</a> ·
   <a href="#quick-start">🚀 Quick start</a> ·
   <a href="#agent-skill">🤖 Agent skill</a> ·
@@ -29,6 +30,14 @@
 </p>
 
 **YuE2 brings frontier song quality to music generation with an editable composition.** Give it lyrics and a style prompt: it writes a melody-and-chord plan, then realizes that plan as a complete song with vocals and accompaniment.
+
+<a id="music-arena"></a>
+
+> **🎧 YuE2 needs your ears**
+>
+> We're running a public listening study comparing YuE2 with leading proprietary music generation systems. Listen to anonymous music clips and choose A, B, or a tie. Your honest feedback helps us understand how YuE2 sounds to real listeners.
+>
+> **[Listen & vote →](https://arena.3-148-255-99.sslip.io:8080)** · No account needed. Headphones recommended.
 
 - **Frontier quality.** YuE2 is competitive with Suno v5/v6 on WildSongBench. YuE2 (best-of-8) achieves **6.9632 SongBench Avg**, the highest observed mean among all evaluated settings.
 - **White-box music generation through symbolic planning.** Read, play, and change the composition before rendering it. Melody and chords become explicit controls that a person or an agent can inspect and edit.
