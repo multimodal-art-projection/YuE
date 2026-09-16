@@ -13,6 +13,16 @@ def synchronize(device):
         torch.mps.synchronize()
 
 
+def graph_fallback_reason(device, model):
+    if device.type != "cuda":
+        return "non_cuda_device"
+    if torch.version.hip:
+        return "rocm_not_graph_validated"
+    if getattr(model, "_yue2_fp8_originals", {}):
+        return "fp8_not_graph_validated"
+    return None
+
+
 def window_penalty(logits, recent_ids, penalty):
     if penalty == 1.0 or len(recent_ids) == 0:
         return logits
@@ -83,7 +93,11 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
 
     graph = None
     positive_cache = negative_cache = None
-    graph_enabled = use_cuda_graph and device.type == "cuda" and not getattr(model, "_yue2_fp8_originals", {})
+    # CUDA graphs use varlen Flash attention with seqused_k. The ROCm operator
+    # exposes the same schema but rejects non-null seqused_k. Full-capacity
+    # masked SDPA graphs also regress throughput here; retain eager KV slicing.
+    fallback = graph_fallback_reason(device, model)
+    graph_enabled = use_cuda_graph and fallback is None
     synchronize(device)
     start = time.perf_counter()
     try:
@@ -146,7 +160,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
                   "execution": "cuda_graph" if graph is not None else "eager",
                   "attention": graph.attention_backend if graph is not None else "sdpa"}
         if use_cuda_graph and not graph_enabled:
-            timing["graph_fallback_reason"] = "fp8_not_graph_validated" if getattr(model, "_yue2_fp8_originals", {}) else "non_cuda_device"
+            timing["graph_fallback_reason"] = fallback
         return history, timing, not eos
     finally:
         if graph is not None:

@@ -32,6 +32,7 @@ def get_pipe(args):
     return YuE2Pipeline.from_pretrained(model, vae=vae, revision=args.revision,
              vae_revision=args.vae_revision, device=args.device, memory_budget_gib=args.budget,
              backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar,
+             rocm_profile=args.rocm_profile,
              local_files_only=args.offline, generation_config=config,
              vae_core_frames=512 if args.budget <= 12 else 1024,
              progress=not getattr(args, "quiet", False))
@@ -184,6 +185,7 @@ def batch(args):
 
 
 def parser():
+    from .rocm import PROFILES
     p = argparse.ArgumentParser(description="YuE2: style + lyrics → symbolic plan → song")
     sub = p.add_subparsers(dest="command", required=True)
     for name in ("doctor", "generate", "batch"):
@@ -195,6 +197,8 @@ def parser():
         q.add_argument("--device", default="auto")
         q.add_argument("--budget", type=float, default=24)
         q.add_argument("--backend", choices=("torch", "torch-eager", "vllm"), default="torch")
+        q.add_argument("--rocm-profile", choices=PROFILES,
+                       help="Opt-in experimental AMD tuning; see docs/amd-rocm.md")
         q.add_argument("--quantization", choices=("none", "fp8"), default="none")
         q.add_argument("--offload-ar", action="store_true")
         q.add_argument("--offline", action="store_true")
