@@ -220,9 +220,15 @@ MERT2 feature extraction is optional for generation. YuE2's pipeline does not re
 
 ## License
 
+**Free use and output monetization.** Personal users, content creators, musicians, and academic users may use YuE2 and monetize their generated outputs **without paying us any fees or royalties**, under the additional permission in [MODEL_LICENSE](MODEL_LICENSE). We strongly encourage you to credit **YuE2** or include **#YuE2** when sharing your work. Credit on generated outputs is optional.
+
+**Commercial use by companies.** For commercial use of YuE2's model weights by companies, please [contact us](#contact) to discuss a commercial license.
+
+**Responsible use and disclaimer.** The additional model permission prohibits illegal, harmful, deceptive, or otherwise unethical use, including fraud, harassment, and deceptive impersonation. YuE2 is provided **as is, without warranties**. Users are responsible for their inputs, outputs, and use of the model, including obtaining any necessary rights and consent. To the extent permitted by law, the authors are not liable for misuse or resulting losses.
+
 YuE2's first-party code, agent skill, and documentation are licensed under **[Apache 2.0](LICENSE)**. Copyright (c) 2026 the YuE2 authors.
 
-Model weights are separately licensed under **[CC BY-NC 4.0](MODEL_LICENSE)**. Third-party components retain their [original licenses](THIRD_PARTY_NOTICES.md). The archived [YuE-v1 branch](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1) retains its original license.
+Model weights are separately licensed under **CC BY-NC 4.0**, with the additional permission above; see [MODEL_LICENSE](MODEL_LICENSE) for the full terms. Third-party components retain their [original licenses](THIRD_PARTY_NOTICES.md). The archived [YuE-v1 branch](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1) retains its original license.
 
 Apache 2.0 applies to the current repository source; the earlier `yue2-v0.1.6` download archives retain their bundled licenses.
 

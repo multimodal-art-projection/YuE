@@ -11,5 +11,6 @@ the checkpoint's original inference implementation.
   Full text: `licenses/SnakeBeta-NVIDIA-MIT.txt`.
 
 These notices cover the identified source code and retain its original licenses.
-The YuE2 model checkpoint weights are separately licensed under CC BY-NC 4.0;
-see MODEL_LICENSE for the scope and full terms. This does not relicense third-party code.
+The YuE2 model checkpoint weights are separately licensed under CC BY-NC 4.0,
+with additional permission for individuals and academic users; see MODEL_LICENSE
+for the scope and full terms. This does not relicense third-party code.

@@ -3,6 +3,7 @@ YuE2 model-weight license
 The YuE2-3B, YuE2-Vae and YuE2-Vae-legacy checkpoint weights are
 licensed under Creative Commons Attribution-NonCommercial 4.0 International
 (CC BY-NC 4.0): https://creativecommons.org/licenses/by-nc/4.0/
+Additional permission for individuals and academic users is granted below.
 
 Scope: the YuE2 checkpoint weights in model.safetensors, or the corresponding
 models/<model-name>/model.safetensors files in the inference kit.
@@ -15,6 +16,62 @@ This weight license does not replace separately applicable licenses for code,
 text tokenization files, evaluation assets or other bundled material.
 Third-party source notices and their original license texts are preserved in
 THIRD_PARTY_NOTICES.md and licenses/.
+
+Additional permission for individuals and academic users (2026-09-16)
+------------------------------------------------------------------
+
+In addition to the CC BY-NC 4.0 license below, the YuE2 model licensors
+grant personal users, content creators, musicians and academic users
+permission to use the model weights free of charge to generate outputs,
+and to publish, distribute, sell, license or otherwise monetize those
+outputs, subject to the responsible-use conditions below. Academic
+users include students, educators, researchers and academic institutions
+using YuE2 for their academic work.
+
+For these activities, the model licensors waive the NonCommercial
+restriction to the extent necessary. These users do not need a separate
+commercial license from, or owe license fees or royalties to, the model
+licensors for this use or for monetizing their outputs. This includes
+distributing or licensing their outputs to clients and publishing them
+on commercial platforms.
+
+We strongly encourage users to credit YuE2 by including the model name
+or the #YuE2 tag when sharing generated work. Credit on generated
+outputs is optional and is not a condition of this additional permission
+or of output monetization. This recommendation does not waive the
+attribution requirements for sharing model weights or adapted weights.
+
+This additional permission covers use in an individual or academic
+capacity. It does not authorize commercial use of the model weights by
+companies. Companies wishing to use the model weights commercially
+should contact ryuanab@connect.ust.hk to discuss a commercial license:
+https://github.com/multimodal-art-projection/YuE#contact
+
+Responsible use is a condition of this additional permission. Under
+this permission, you must not use the model weights or generated
+outputs for illegal, harmful, deceptive or otherwise unethical purposes,
+including fraud, harassment or deceptive impersonation. You are
+responsible for your inputs, outputs and use of the model, including
+obtaining any necessary rights and consent.
+
+To the extent permitted by applicable law, the model weights and the
+additional permission are provided as is, without warranties of any
+kind. The model licensors and authors disclaim liability for misuse
+and any resulting claims, losses or damages. Nothing in this statement
+excludes liability that cannot lawfully be excluded.
+
+This permission concerns generating and using outputs; it does not
+extend to commercial redistribution or sale of the model weights.
+All other applicable CC BY-NC 4.0 conditions continue to apply to the
+weights. Generated outputs are not subject to the model weights'
+NonCommercial restriction solely because they were generated with YuE2.
+
+This additional permission and its responsible-use conditions are
+separate from the unmodified CC BY-NC 4.0 license below. They do not
+restrict any rights already granted under that license or under the
+Apache 2.0 license for the repository's code. This permission covers
+only rights the model licensors have authority to grant and does not
+grant rights in third-party material used in inputs or outputs.
 
 The official license text follows without modification.
 Source: https://creativecommons.org/licenses/by-nc/4.0/legalcode.txt
