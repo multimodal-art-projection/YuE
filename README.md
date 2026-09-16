@@ -257,23 +257,23 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>💬 WeChat · 微信</strong><br>
-      <sub>Chinese-speaking users · 中文用户</sub>
+      <strong>💬 WeChat</strong><br>
+      <sub>Chinese-speaking users</sub>
     </td>
     <td align="center" width="50%">
       <a href="https://discord.gg/ssAyWMnMzu"><strong>🌐 Join Discord ↗</strong></a><br>
-      <sub>Global users · 全球用户</sub>
+      <sub>Global users</sub>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
       <details>
-        <summary><strong>WeChat QR code · 展开微信二维码</strong></summary>
+        <summary><strong>Show WeChat QR code</strong></summary>
         <br>
         <a href="assets/wechat-yue2-group.png">
-          <img src="assets/wechat-yue2-group.png" alt="YuE2 微信交流群二维码 / WeChat group QR code" width="240" />
+          <img src="assets/wechat-yue2-group.png" alt="YuE2 WeChat group QR code" width="240" />
         </a><br>
-        <sub>Click to enlarge · 点击查看原图<br>Valid until Sep 23, 2026 · 有效期至 2026-09-23</sub>
+        <sub>Click to enlarge<br>Valid until Sep 23, 2026</sub>
       </details>
     </td>
   </tr>
