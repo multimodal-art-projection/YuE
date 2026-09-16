@@ -12,5 +12,5 @@ the checkpoint's original inference implementation.
 
 These notices cover the identified source code and retain its original licenses.
 The YuE2 model checkpoint weights are separately licensed under CC BY-NC 4.0,
-with additional permission for individuals and academic users; see MODEL_LICENSE
-for the scope and full terms. This does not relicense third-party code.
+with additional permission for individual creators; see MODEL_LICENSE for
+academic-use terms, scope and full terms. This does not relicense third-party code.

@@ -220,7 +220,11 @@ MERT2 feature extraction is optional for generation. YuE2's pipeline does not re
 
 ## License
 
-**Free use and output monetization.** Personal users, content creators, musicians, and academic users may use YuE2 and monetize their generated outputs **without paying us any fees or royalties**, under the additional permission in [MODEL_LICENSE](MODEL_LICENSE). We strongly encourage you to credit **YuE2** or include **#YuE2** when sharing your work. Credit on generated outputs is optional.
+**Individuals, creators, and musicians.** Personal users, content creators, and musicians may use YuE2 and monetize their generated outputs **without paying us any fees or royalties**, under the additional permission in [MODEL_LICENSE](MODEL_LICENSE).
+
+**Academic use.** Students, educators, researchers, and academic institutions may use YuE2 **free of charge for non-commercial research and education**.
+
+We strongly encourage you to credit **YuE2** or include **#YuE2** when sharing your work. Credit on generated outputs is optional.
 
 **Commercial use by companies.** For commercial use of YuE2's model weights by companies, please [contact us](#contact) to discuss a commercial license.
 
