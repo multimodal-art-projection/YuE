@@ -287,4 +287,6 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
   </tr>
 </table>
 
-For collaboration and licensing inquiries, please contact [ryuanab@connect.ust.hk](mailto:ryuanab@connect.ust.hk). For data partnerships, please contact [gezhang@umich.edu](mailto:gezhang@umich.edu).
+- **Licensing inquiries:** [lauryliuyang@hkgai.org](mailto:lauryliuyang@hkgai.org)
+- **Data partnerships:** [gezhang@umich.edu](mailto:gezhang@umich.edu)
+- **Academic collaboration:** [ryuanab@connect.ust.hk](mailto:ryuanab@connect.ust.hk)
