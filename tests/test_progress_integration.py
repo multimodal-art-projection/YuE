@@ -28,6 +28,21 @@ def bare_pipe(enabled=True, backend='torch-eager'):
     return pipe
 
 
+@pytest.mark.parametrize('backend,use_graph', [('torch', True), ('torch-eager', False)])
+def test_torch_eager_stays_explicit_opt_in_on_hip(backend, use_graph, monkeypatch):
+    recorded = {}
+
+    def generate(*args, **kwargs):
+        recorded['use_cuda_graph'] = kwargs.get('use_cuda_graph')
+        return [CODEC_OFFSET], {'output_tokens': 1}, False
+
+    monkeypatch.setattr(pipeline, 'generate_tokens', generate)
+    monkeypatch.setattr(torch.version, 'hip', 'test-hip')
+    pipe = bare_pipe(enabled=False, backend=backend)
+    pipe._generate([1], pipe.generation_config.semantic, 42, 'semantic')
+    assert recorded['use_cuda_graph'] is use_graph
+
+
 @pytest.mark.parametrize('backend', ['torch-eager', 'vllm'])
 @pytest.mark.parametrize('phase', ['abc', 'semantic'])
 def test_callback_coexists_with_progress_exactly_once_and_quiet_is_inert(backend, phase, monkeypatch, capsys):
