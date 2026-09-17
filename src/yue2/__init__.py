@@ -3,7 +3,7 @@ __version__ = "0.1.6"
 
 
 def __getattr__(name):
-    if name in {"YuE2Pipeline", "SymbolicPlan", "SemanticResult", "SongResult"}:
+    if name in {"YuE2Pipeline", "SymbolicPlan", "SemanticResult", "SongResult", "RunState"}:
         from . import pipeline
         return getattr(pipeline, name)
     if name in {"YuE2Config", "YuE2ForCausalLM"}:
