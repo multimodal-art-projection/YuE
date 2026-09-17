@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "reviewed_commit": "8db0b9b4a058840ad1a2e71c1fffd645ae081de2",
+  "environment": {
+    "model": "MacBook Pro Mac16,5",
+    "chip": "Apple M4 Max",
+    "memory_gib": 128,
+    "architecture": "arm64",
+    "macos": "15.7.9 (24G830)",
+    "python": "3.12.9",
+    "torch": "2.10.0",
+    "transformers": "4.57.6",
+    "device": "mps",
+    "dtype": "float16"
+  },
+  "commands": [
+    "python tools/mps_long_context_bench.py --mode both --tokens 2048",
+    "python tools/mps_long_context_bench.py --mode both --tokens 4096"
+  ],
+  "runs": [
+    {
+      "mode": "grow",
+      "requested_tokens": 2048,
+      "completed_tokens": 2048,
+      "completed": true,
+      "distinct_decode_kv_lengths": 2048,
+      "peak_allocated_gib": 0.05,
+      "peak_driver_gib": 0.24,
+      "tokens_per_second": 196.62,
+      "bucket": 2048,
+      "dtype": "float16"
+    },
+    {
+      "mode": "bucket",
+      "requested_tokens": 2048,
+      "completed_tokens": 2048,
+      "completed": true,
+      "distinct_decode_kv_lengths": 2,
+      "peak_allocated_gib": 0.05,
+      "peak_driver_gib": 0.1,
+      "tokens_per_second": 182.16,
+      "bucket": 2048,
+      "dtype": "float16"
+    },
+    {
+      "mode": "grow",
+      "requested_tokens": 4096,
+      "completed_tokens": 4096,
+      "completed": true,
+      "distinct_decode_kv_lengths": 4096,
+      "peak_allocated_gib": 0.0,
+      "peak_driver_gib": 0.09,
+      "tokens_per_second": 151.58,
+      "bucket": 2048,
+      "dtype": "float16"
+    },
+    {
+      "mode": "bucket",
+      "requested_tokens": 4096,
+      "completed_tokens": 4096,
+      "completed": true,
+      "distinct_decode_kv_lengths": 3,
+      "peak_allocated_gib": 0.0,
+      "peak_driver_gib": 0.03,
+      "tokens_per_second": 344.14,
+      "bucket": 2048,
+      "dtype": "float16"
+    }
+  ]
+}
