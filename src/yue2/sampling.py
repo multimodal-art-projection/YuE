@@ -83,6 +83,8 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
 
     graph = None
     positive_cache = negative_cache = None
+    # HIP still reports device.type == "cuda". Keep GraphAR there; torch-eager is
+    # an explicit opt-in because sampled tokens can diverge from the graph run.
     graph_enabled = use_cuda_graph and device.type == "cuda" and not getattr(model, "_yue2_fp8_originals", {})
     synchronize(device)
     start = time.perf_counter()
