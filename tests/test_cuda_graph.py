@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 import torch
 
-from yue2.cuda_graph import GraphAR
+from yue2.cuda_graph import GraphAR, _cudnn_attention_available, _private_flash_attention_available
 from yue2.modeling_yue2 import StaticKVCache, YuE2Config, YuE2ForCausalLM
 
 
@@ -115,11 +115,63 @@ def test_quantized_model_requires_explicit_eager_path(model):
         GraphAR(model, [[1]], 2, capture=False)
 
 
+def test_private_flash_attention_rejects_hip_before_operator_detection(model):
+    with patch.object(torch.version, "hip", "test-hip"):
+        assert _private_flash_attention_available(model.config, fused=True) is False
+
+
+def test_cudnn_attention_rejects_hip_before_backend_detection():
+    with patch.object(torch.version, "hip", "test-hip"), \
+            patch.object(torch.backends.cudnn, "is_available", return_value=True) as available:
+        assert _cudnn_attention_available(fused=True) is False
+        available.assert_not_called()
+
+
+def test_cuda_backend_helpers_keep_existing_eligibility(model):
+    with patch.object(torch.version, "hip", None):
+        assert _private_flash_attention_available(model.config, fused=False) is False
+        schema = hasattr(torch.ops.aten, "_flash_attention_forward") and (
+            "seqused_k" in str(torch.ops.aten._flash_attention_forward.default._schema))
+        assert _private_flash_attention_available(model.config, fused=True) is (
+            model.config.head_dim <= 256 and schema)
+        with patch.object(torch.backends.cudnn, "is_available", return_value=True) as available:
+            assert _cudnn_attention_available(fused=True) is True
+            available.assert_called()
+        assert _cudnn_attention_available(fused=False) is False
+
+
+@pytest.mark.parametrize("flash,cudnn,expected", [
+    (True, True, "flash"),
+    (True, False, "flash"),
+    (False, True, "cudnn"),
+    (False, False, "sdpa"),
+])
+def test_auto_backend_prefers_flash_then_cudnn_then_sdpa(model, flash, cudnn, expected):
+    with patch("yue2.cuda_graph._private_flash_attention_available", return_value=flash), \
+            patch("yue2.cuda_graph._cudnn_attention_available", return_value=cudnn):
+        graph = GraphAR(model, [[1]], 2, capture=False)
+        assert graph.attention_backend == expected
+
+
+def test_hip_auto_and_explicit_backends_use_public_sdpa(model):
+    with patch.object(torch.version, "hip", "test-hip"):
+        graph = GraphAR(model, [[1]], 2, capture=False)
+        assert graph.attention_backend == "sdpa"
+        graph = GraphAR(model, [[1]], 2, capture=False, attention_backend="sdpa")
+        assert graph.attention_backend == "sdpa"
+        with pytest.raises(ValueError, match="FlashAttention"):
+            GraphAR(model, [[1]], 2, capture=False, attention_backend="flash")
+        with pytest.raises(ValueError, match="cuDNN"):
+            GraphAR(model, [[1]], 2, capture=False, attention_backend="cudnn")
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA capture requires an actual allocated GPU")
 @pytest.mark.parametrize("prefixes", [[[2, 3, 4]], [[2, 3, 4, 5], [6]]])
-@pytest.mark.parametrize("backend", ["auto", "cudnn"])
+@pytest.mark.parametrize("backend", ["auto", "cudnn", "sdpa"])
 @pytest.mark.parametrize("fused", [False, True])
 def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused):
+    if torch.version.hip and backend == "cudnn":
+        pytest.skip("cuDNN attention is NVIDIA-specific; ROCm uses public SDPA")
     # Head size 8 exercises fused CUDA paths, as does the real head size 128.
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(146)
@@ -131,7 +183,12 @@ def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused):
         graph = GraphAR(model, prefixes, 5, attention_backend=backend, fuse_projections=fused)
         torch.testing.assert_close(graph.prefill(), expected, atol=0, rtol=0)
         assert graph.graph is not None
-        assert graph.attention_backend == ("flash" if backend == "auto" else "cudnn")
+        if backend == "auto":
+            expected_backend = "flash" if _private_flash_attention_available(model.config, fused=True) else (
+                "cudnn" if _cudnn_attention_available(fused=True) else "sdpa")
+        else:
+            expected_backend = backend
+        assert graph.attention_backend == expected_backend
         for keys, values in zip(graph.keys, graph.values):
             for branch, prefix in enumerate(prefixes):
                 keys[branch, len(prefix)+1:].fill_(1000)
