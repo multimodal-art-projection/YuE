@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from yue2.cuda_graph import GraphAR, _cudnn_attention_available, _private_flash_attention_available
 from yue2.modeling_yue2 import StaticKVCache, YuE2Config, YuE2ForCausalLM
@@ -116,7 +117,11 @@ def test_quantized_model_requires_explicit_eager_path(model):
 
 
 def test_private_flash_attention_rejects_hip_before_operator_detection(model):
-    with patch.object(torch.version, "hip", "test-hip"):
+    class ForbiddenATen:
+        def __getattr__(self, name):
+            raise AssertionError(f"aten.{name} must not be probed on HIP")
+
+    with patch.object(torch.version, "hip", "test-hip"), patch.object(torch.ops, "aten", ForbiddenATen()):
         assert _private_flash_attention_available(model.config, fused=True) is False
 
 
@@ -165,11 +170,33 @@ def test_hip_auto_and_explicit_backends_use_public_sdpa(model):
             GraphAR(model, [[1]], 2, capture=False, attention_backend="cudnn")
 
 
+def test_hip_decode_uses_public_masked_sdpa_and_matches_eager(model):
+    # HIP selection is unit-tested here; real AMD hardware is not required.
+    prefixes = [[2, 3, 4, 5], [6]]
+    with patch.object(torch.version, "hip", "test-hip"), torch.inference_mode():
+        original, expected = reference_prefill(model, prefixes, 5)
+        graph = GraphAR(model, prefixes, 5, capture=False)
+        assert graph.attention_backend == "sdpa"
+        torch.testing.assert_close(graph.prefill(), expected, atol=1e-7, rtol=1e-5)
+        with patch("yue2.cuda_graph.F.scaled_dot_product_attention", wraps=F.scaled_dot_product_attention) as sdpa, \
+                patch("torch.nn.attention.sdpa_kernel", side_effect=AssertionError("cuDNN SDPA kernel used")):
+            actual = graph.step(7)
+        expected = torch.cat([model(torch.tensor([[7]]), past_key_values=cache,
+                                   use_cache=True, logits_to_keep=1).logits[:, -1] for cache in original])
+        torch.testing.assert_close(actual, expected, atol=1e-7, rtol=1e-5)
+        assert sdpa.call_count == len(model.model.layers)
+        for _, kwargs in sdpa.call_args_list:
+            assert kwargs.get("attn_mask") is not None
+            assert kwargs.get("is_causal") is False
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA capture requires an actual allocated GPU")
 @pytest.mark.parametrize("prefixes", [[[2, 3, 4]], [[2, 3, 4, 5], [6]]])
 @pytest.mark.parametrize("backend", ["auto", "cudnn", "sdpa"])
 @pytest.mark.parametrize("fused", [False, True])
 def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused):
+    # Optional NVIDIA capture parity. HIP backend choice is covered by mocked
+    # tests above and does not require AMD hardware in CI.
     if torch.version.hip and backend == "cudnn":
         pytest.skip("cuDNN attention is NVIDIA-specific; ROCm uses public SDPA")
     # Head size 8 exercises fused CUDA paths, as does the real head size 128.
