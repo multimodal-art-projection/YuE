@@ -115,7 +115,8 @@ def test_quantized_model_requires_explicit_eager_path(model):
         GraphAR(model, [[1]], 2, capture=False)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA capture requires an actual allocated GPU")
+@pytest.mark.skipif(not torch.cuda.is_available() or bool(torch.version.hip),
+                    reason="This capture test requires an NVIDIA GPU and CUDA varlen/cuDNN attention")
 @pytest.mark.parametrize("prefixes", [[[2, 3, 4]], [[2, 3, 4, 5], [6]]])
 @pytest.mark.parametrize("backend", ["auto", "cudnn"])
 @pytest.mark.parametrize("fused", [False, True])

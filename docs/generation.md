@@ -2,6 +2,9 @@
 
 Install from the repository root with Python 3.12 and `python -m pip install .`. The supported starting point is a BF16-capable NVIDIA GPU with 24 GB VRAM, one request at a time. The default output is 48 kHz stereo with full symbolic planning and the listening decoder, [YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae).
 
+Windows Radeon 8060S users can opt into the [experimental ROCm profile](amd-rocm.md).
+It requires a separate AMD PyTorch installation; do not replace that wheel with the default NVIDIA-oriented dependency pin.
+
 ## Style, lyrics, and planning
 
 Put genre, instruments, vocal character, language, and tempo in `style`. Put the words to sing in `lyrics`, with section tags such as `[Verse]` and `[Chorus]`. Start with the [original request](../examples/song.json).
