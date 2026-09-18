@@ -73,10 +73,16 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
     config = model.config
 
     def prefill(ids):
-        cache = StaticKVCache(num_layers=config.num_hidden_layers, batch_size=1,
-                              num_kv_heads=config.num_key_value_heads,
-                              max_seq_len=len(ids) + sampling.max_tokens,
-                              head_dim=config.head_dim, dtype=dtype, device=device)
+        try:
+            cache = StaticKVCache(num_layers=config.num_hidden_layers, batch_size=1,
+                                  num_kv_heads=config.num_key_value_heads,
+                                  max_seq_len=len(ids) + sampling.max_tokens,
+                                  head_dim=config.head_dim, dtype=dtype, device=device)
+        except torch.OutOfMemoryError:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            from transformers.cache_utils import DynamicCache
+            cache = DynamicCache()
         output = model(torch.tensor([ids], device=device), past_key_values=cache,
                        use_cache=True, logits_to_keep=1)
         return output.logits[:, -1, :], output.past_key_values
@@ -88,11 +94,20 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
     start = time.perf_counter()
     try:
         if graph_enabled:
-            from .cuda_graph import GraphAR
-            graph = GraphAR(model, [prefix] if cfg_scale == 1 else [prefix, negative], sampling.max_tokens)
-            logits = graph.prefill()
-            conditional = logits[:1]
-            unconditional = logits[1:] if cfg_scale != 1 else None
+            try:
+                from .cuda_graph import GraphAR
+                graph = GraphAR(model, [prefix] if cfg_scale == 1 else [prefix, negative], sampling.max_tokens)
+                logits = graph.prefill()
+                conditional = logits[:1]
+                unconditional = logits[1:] if cfg_scale != 1 else None
+            except torch.OutOfMemoryError:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                graph = None
+                conditional, positive_cache = prefill(prefix)
+                unconditional = None
+                if cfg_scale != 1.0:
+                    unconditional, negative_cache = prefill(negative)
         else:
             conditional, positive_cache = prefill(prefix)
             unconditional = None
