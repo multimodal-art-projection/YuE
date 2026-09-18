@@ -28,7 +28,7 @@ def get_pipe(args):
     from .pipeline import YuE2Pipeline
     from .protocol import GenerationConfig
     model, vae = model_paths(args)
-    config = GenerationConfig.from_dict(json.loads(Path(args.config).read_text())) if args.config else None
+    config = GenerationConfig.from_dict(json.loads(Path(args.config).read_text(encoding="utf-8"))) if args.config else None
     return YuE2Pipeline.from_pretrained(model, vae=vae, revision=args.revision,
              vae_revision=args.vae_revision, device=args.device, memory_budget_gib=args.budget,
              backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar,
@@ -89,7 +89,7 @@ def doctor(args):
 def generate(args):
     if args.request:
         path = Path(args.request)
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         base = path.parent
     else:
         data, base = {}, Path.cwd()
@@ -145,7 +145,7 @@ def batch(args):
     if args.concurrency != 1:
         raise ValueError("The minimal torch pipeline currently supports concurrency=1; do not share a pipeline concurrently")
     path = Path(args.input)
-    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     ids = [r.get("id") for r in rows]
     if any(x is None for x in ids) or len(ids) != len(set(ids)):
         raise ValueError("Every batch request must have a unique id")
