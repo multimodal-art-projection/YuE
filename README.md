@@ -16,14 +16,6 @@
 <p align="center"><strong>Compose in symbols. Create in sound.</strong></p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/32209">
-    <img src="https://trendshift.io/api/badge/repositories/32209" alt="YuE — GitHub Trending #1 Repository of the Day" width="250" height="55" />
-  </a>
-  <br />
-  <sub>All languages · September 14, 2026</sub>
-</p>
-
-<p align="center">
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
   <a href="https://yue.noizai.net/">🚀 Try online (free)</a> ·
   <a href="https://arena.3-148-255-99.sslip.io:8080">🗳️ Music Arena</a> ·
@@ -36,6 +28,25 @@
   <a href="https://huggingface.co/datasets/m-a-p/WildSongBench">🤗 WSB</a> ·
   <a href="https://github.com/multimodal-art-projection/YuE/releases/tag/yue2-v0.1.6">📦 Release</a> ·
   <a href="https://discord.gg/ssAyWMnMzu"><img alt="Join us on Discord" src="https://img.shields.io/discord/842440537755353128?color=5865F2&amp;logo=discord&amp;logoColor=white&amp;label=Discord&amp;style=flat-square" height="20" /></a>
+</p>
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/32209">
+    <img src="https://trendshift.io/api/badge/repositories/32209" alt="YuE — GitHub Trending #1 Repository of the Day" width="250" height="55" />
+  </a>
+  <br />
+  <sub>All languages · September 14, 2026</sub>
+</p>
+
+<p align="center">
+  <a href="https://web.archive.org/web/20260917003427/https://huggingface.co/models?sort=trending">
+    <img src="https://img.shields.io/static/v1?label=HF%20Global%20Trending&amp;message=Reached%20%233&amp;color=FFD21E&amp;logo=huggingface&amp;logoColor=FFD21E" alt="Hugging Face Global Model Trending: reached #3 on September 17, 2026" height="20" />
+  </a>
+  <a href="https://huggingface.co/models?pipeline_tag=text-to-audio&amp;sort=trending">
+    <img src="https://img.shields.io/static/v1?label=HF%20Text-to-Audio%20Trending&amp;message=Reached%20%231&amp;color=FFD21E&amp;logo=huggingface&amp;logoColor=FFD21E" alt="Hugging Face Text-to-Audio Trending: reached #1 on September 20, 2026" height="20" />
+  </a>
+  <br />
+  <sub>Global: September 17, 2026 · Text-to-Audio: September 20, 2026</sub>
 </p>
 
 **YuE2 brings frontier song quality to music generation with an editable composition.** Give it lyrics and a style prompt: it writes a melody-and-chord plan, then realizes that plan as a complete song with vocals and accompaniment.
