@@ -16,7 +16,16 @@
 <p align="center"><strong>Compose in symbols. Create in sound.</strong></p>
 
 <p align="center">
+  <a href="https://trendshift.io/repositories/32209">
+    <img src="https://trendshift.io/api/badge/repositories/32209" alt="YuE — GitHub Trending #1 Repository of the Day" width="250" height="55" />
+  </a>
+  <br />
+  <sub>All languages · September 14, 2026</sub>
+</p>
+
+<p align="center">
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
+  <a href="https://yue.noizai.net/">🚀 Try online (free)</a> ·
   <a href="https://arena.3-148-255-99.sslip.io:8080">🗳️ Music Arena</a> ·
   <a href="https://huggingface.co/m-a-p/YuE2-3B">🤗 YuE2</a> ·
   <a href="#quick-start">🚀 Quick start</a> ·
@@ -30,6 +39,8 @@
 </p>
 
 **YuE2 brings frontier song quality to music generation with an editable composition.** Give it lyrics and a style prompt: it writes a melody-and-chord plan, then realizes that plan as a complete song with vocals and accompaniment.
+
+**[Try YuE2 online for free →](https://yue.noizai.net/)** · Hosted by NOIZ. No installation required.
 
 <a id="music-arena"></a>
 
