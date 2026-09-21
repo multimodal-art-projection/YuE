@@ -23,6 +23,17 @@ def test_cli_accepts_explicit_model_and_decoder(monkeypatch, tmp_path):
     assert cli.model_paths(args) == ("example/song-model", "example/decoder")
 
 
+def test_cli_backend_default_is_torch_not_eager_on_hip(monkeypatch):
+    import inspect
+    import torch
+    monkeypatch.setattr(torch.version, "hip", "test-hip")
+    assert inspect.signature(pipeline.YuE2Pipeline.__init__).parameters["backend"].default == "torch"
+    args = cli.parser().parse_args(["generate"])
+    assert args.backend == "torch"
+    args = cli.parser().parse_args(["generate", "--backend", "torch-eager"])
+    assert args.backend == "torch-eager"
+
+
 @pytest.mark.parametrize("command", ["verify", "bench", "eval"])
 def test_cli_rejects_commands_not_in_the_public_package(command):
     with pytest.raises(SystemExit) as exc:
