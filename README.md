@@ -303,7 +303,7 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
         <a href="assets/wechat-yue2-group.png">
           <img src="assets/wechat-yue2-group.png" alt="YuE2 WeChat group QR code" width="240" />
         </a><br>
-        <sub>Click to enlarge<br>Valid until Sep 23, 2026</sub>
+        <sub>Click to enlarge<br>Valid until Sep 29, 2026</sub>
       </details>
     </td>
   </tr>
