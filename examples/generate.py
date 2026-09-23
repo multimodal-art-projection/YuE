@@ -21,7 +21,7 @@ def main():
         parser.error("Choose a fresh output directory to retain each version.")
     request = json.loads(args.request.read_text(encoding="utf-8"))
     if args.abc_file:
-        request["abc"] = args.abc_file.read_text(encoding="utf-8")
+        request["abc"] = args.abc_file.read_bytes().decode("utf-8")
     if args.cot:
         request["cot"] = args.cot
     if request.get("abc") is not None and request.get("cot", "full") == "off":
