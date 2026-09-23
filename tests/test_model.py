@@ -10,6 +10,7 @@ import torch
 from transformers import AutoModelForCausalLM
 from transformers.cache_utils import DynamicCache, StaticCache
 
+import yue2.modeling_yue2 as modeling_yue2
 from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM, StaticKVCache
 
 
@@ -20,6 +21,28 @@ def tiny_config():
         vocab_size=71, max_position_embeddings=64, max_latent_frames=64,
         pad_token_id=0, eos_token_id=None, bos_token_id=1,
     )
+
+
+def test_sdpa_uses_explicit_mask_for_mps_half_causal_prefill(monkeypatch):
+    query = torch.randn(1, 2, 4, 3)
+    key = torch.randn(1, 1, 4, 3)
+    value = torch.randn(1, 1, 4, 3)
+    calls = []
+    original = modeling_yue2.F.scaled_dot_product_attention
+
+    def capture(query, key, value, *, attn_mask=None, is_causal=False, enable_gqa=False):
+        calls.append((attn_mask, is_causal))
+        return original(query, key, value, attn_mask=attn_mask,
+                        is_causal=is_causal, enable_gqa=enable_gqa)
+
+    monkeypatch.setattr(modeling_yue2, "_needs_mps_causal_mask", lambda _: True)
+    monkeypatch.setattr(modeling_yue2.F, "scaled_dot_product_attention", capture)
+    modeling_yue2.sdpa(query, key, value, is_causal=True)
+
+    assert len(calls) == 1
+    mask, is_causal = calls[0]
+    assert not is_causal
+    torch.testing.assert_close(mask, torch.ones(4, 4, dtype=torch.bool).tril())
 
 
 @pytest.fixture
