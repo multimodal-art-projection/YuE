@@ -246,6 +246,8 @@ class YuE2Pipeline:
                 from .fast import generate_vllm
                 result = generate_vllm(self, prefix, sampling, seed, phase, on_token=observed, **kwargs)
             else:
+                # Default "torch" keeps GraphAR on CUDA and HIP. torch-eager is an
+                # explicit, potentially behavior-changing opt-in, not a ROCm default.
                 result = generate_tokens(model, prefix, sampling, seed, phase,
                                          use_cuda_graph=self.backend != "torch-eager", on_token=observed, **kwargs)
             if result[2]:
