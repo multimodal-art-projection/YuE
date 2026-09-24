@@ -283,7 +283,7 @@ The YuE2 technical report is coming soon. For now, please cite **[MERT](https://
 }
 ```
 
-## Contact
+Contact
 
 <table>
   <tr>
