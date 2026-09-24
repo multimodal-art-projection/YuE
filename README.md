@@ -91,6 +91,9 @@ The staged Python API exposes `plan()` → `generate_semantic()` → `synthesize
 
 **Linux · Python 3.12 · NVIDIA GPU with BF16 support and 24 GB VRAM.** YuE2 produces 48 kHz stereo audio without quantization. Model files download from Hugging Face on first use.
 
+For the AMD Ryzen AI Max+ 395 / Radeon 8060S on Windows, see the opt-in
+[experimental ROCm profile](docs/amd-rocm.md), including installation, measurements and limitations.
+
 ```bash
 git clone https://github.com/multimodal-art-projection/YuE.git
 cd YuE

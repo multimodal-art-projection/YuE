@@ -14,6 +14,7 @@ from .storage import resolve_model, model_identity, identity, write_json, collec
 from .tokenization_yue2 import YuE2TextTokenizer
 from .sampling import generate_tokens, synchronize
 from .progress import Progress
+from .rocm import configure_profile, decoder_execution, runtime_config
 
 
 @dataclass
@@ -121,7 +122,8 @@ class SongResult:
 class YuE2Pipeline:
     def __init__(self, model_dir, vae_dir, *, device="auto", memory_budget_gib=24,
                  backend="torch", generation_config=None, verify_hashes=True,
-                 vae_core_frames=None, quantization="none", offload_ar=False, progress=True):
+                 vae_core_frames=None, quantization="none", offload_ar=False, progress=True,
+                 rocm_profile=None):
         if not isinstance(progress, bool):
             raise TypeError("progress must be True or False")
         self.progress = progress
@@ -136,6 +138,8 @@ class YuE2Pipeline:
         self.device = torch.device(device)
         if self.device.type == "cuda" and self.device.index is None:
             self.device = torch.device("cuda", torch.cuda.current_device())
+        configure_profile(rocm_profile, self.device, backend=backend, quantization=quantization)
+        self.rocm_profile = rocm_profile
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
         torch.backends.cuda.matmul.allow_tf32 = False
@@ -340,7 +344,7 @@ class YuE2Pipeline:
             tiles = 1 if full else (z.shape[-1] + self.vae_core_frames - 1) // self.vae_core_frames
             with self._status("Decoding audio", total=tiles, unit="chunks") as status:
                 report = (lambda completed, total: status.update(completed, total=total)) if self.progress else None
-                with torch.inference_mode():
+                with torch.inference_mode(), decoder_execution(self.rocm_profile):
                     if full:
                         audio = model.decode(z.to(self.device)).cpu()
                         status.update(1)
@@ -364,7 +368,7 @@ class YuE2Pipeline:
         overrides = {k: v for k, v in config.items() if defaults.get(k) != v}
         if request.guidance != (1.01 if request.cot == "off" else 1.0):
             overrides["cfg_scale"] = request.guidance
-        return {"generation": config, "overrides": overrides,
+        effective = {"generation": config, "overrides": overrides,
                 "cot": request.cot, "cfg_scale": request.guidance,
                 "cfg_negative": "instruction_only" if request.cot == "off" else "same_instruction_and_exact_abc",
                 "backend": self.backend, "quantization": self.quantization,
@@ -374,6 +378,10 @@ class YuE2Pipeline:
                 "offload_ar": self.offload_ar, "runtime_sha256": self.runtime_sha256,
                 "decoder_release": json.loads((self.vae_dir / "config.json").read_text()).get("release_variant"),
                 "validation_status": "unvalidated"}
+        rocm = runtime_config(self.device, self.rocm_profile)
+        if rocm is not None:
+            effective["rocm"] = rocm
+        return effective
 
     def __call__(self, style=None, lyrics=None, *, tags=None, abc_sampling=None,
                  semantic_sampling=None, cancelled=None, on_token=None, **kwargs):
