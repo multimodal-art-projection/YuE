@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "date": "2026-09-25",
+  "skill_version": "1.2.0",
+  "tested_script_sha256": {
+    "scripts/abc_tools.py": "ea04b922dacebec7ad257a2f8d83bdb5dfecb7a23110c1a3121c5c41c313930e",
+    "scripts/common.py": "2929619bd37a176c87c37fdcde9864613d4d5172ca2d89d724aa450a4d7053be",
+    "scripts/compile_score.py": "c4eec7f68e3f09b93b45d568a8af640b3f10bb47d31ef6d3b6ce4ae23ac1dea3",
+    "scripts/instrumental.py": "bd294e4a57f1100722f7eeb14ed2457e1bc65b7a6cf516c4225fb1c3e7a441b0",
+    "scripts/instrumentalize.py": "a769111656f418cf4298841dc4a7f6be1a50bfae1e66b1bccfaca3eacf948681",
+    "scripts/setup_runtime.py": "39a57ace45510890d877ffda87e9361809290ff3c21229f2414eb5435ea78e6b",
+    "scripts/test_tools.py": "d33ffc5e501fa92c647f35f7ad37aa5af5cfb977d1c42167af3b448a163fe0c6",
+    "scripts/transcribe_cover.py": "d88174a8d7cd4d8b9c86f7c6096f3d59796e2dcdb80a8e2878330273a9b52b34",
+    "scripts/verify_bundle.py": "9c1d93bd276b946fbd422a1c64f0a6aeb8cbf934cf2ca228018749d075ec8f20"
+  },
+  "cpu_tests": {
+    "passed": 51,
+    "failed": 0,
+    "seeded_score_roundtrips": 64,
+    "command": "python3 -B scripts/test_tools.py",
+    "covers": [
+      "vocal note pitch/onset/duration preservation",
+      "overlap retention and rejection",
+      "ties, keys, meters and chord timing",
+      "model default and explicit agent opt-in",
+      "cover routing and no silent fallback",
+      "artifact tampering and output overwrite",
+      "HTML escaping, export allowlist and strict archive contents"
+    ]
+  },
+  "relocated_gpu_generation": {
+    "attempts": 5,
+    "complete": 4,
+    "runtime_version": "0.1.5",
+    "decoder": "m-a-p/YuE2-Vae (listening)",
+    "fresh_output_directories": true,
+    "working_directory_outside_skill": true,
+    "source": "Official pinned wheel, existing pinned dependencies and public-release weights",
+    "fresh_audio_transcription": true,
+    "samples_detail": [
+      {
+        "case": "model-piano",
+        "seed": 831011,
+        "cot": "full",
+        "status": "complete",
+        "score_origin": "YuE2",
+        "transfer": {
+          "vocal_notes_before": 24,
+          "vocal_notes_after": 0,
+          "original_ins_notes": 47,
+          "unaltered_ins_notes": 47,
+          "output_ins_notes": 71,
+          "vocal_pitch_onset_duration_preserved": true,
+          "meter_and_tempo_preserved": true,
+          "chords": "preserved",
+          "overlap_policy": "vocal",
+          "affected_ins_notes": [],
+          "nominal_seconds": 53.333333333333336,
+          "score_origin": "YuE2"
+        },
+        "truncated": {
+          "abc": false,
+          "semantic": false
+        },
+        "exact_abc_verified": true,
+        "exact_prefix_verified": true,
+        "audio_seconds": 52.79866666666667,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 0.41652536392211914,
+        "rms": 0.05321570239278032,
+        "full_scale_samples": 0,
+        "internal_zero_second_blocks": 0,
+        "audio_sha256": "d68737b6605f8b243d262df78c925e4dd6f1a0bc3b94278509345998cde7e4ea"
+      },
+      {
+        "case": "model-strings",
+        "seed": 831012,
+        "cot": "full",
+        "status": "complete",
+        "score_origin": "YuE2",
+        "transfer": {
+          "vocal_notes_before": 118,
+          "vocal_notes_after": 0,
+          "original_ins_notes": 70,
+          "unaltered_ins_notes": 70,
+          "output_ins_notes": 188,
+          "vocal_pitch_onset_duration_preserved": true,
+          "meter_and_tempo_preserved": true,
+          "chords": "preserved",
+          "overlap_policy": "vocal",
+          "affected_ins_notes": [],
+          "nominal_seconds": 180.0,
+          "score_origin": "YuE2"
+        },
+        "truncated": {
+          "abc": false,
+          "semantic": false
+        },
+        "exact_abc_verified": true,
+        "exact_prefix_verified": true,
+        "audio_seconds": 174.75866666666667,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 1.0,
+        "rms": 0.16372976214238757,
+        "full_scale_samples": 11,
+        "internal_zero_second_blocks": 0,
+        "audio_sha256": "eae19a4c71109222f21f53953b3b43782c32d7ea5c8aa44bad35dcf3b52e9a71"
+      },
+      {
+        "case": "audio-cover",
+        "seed": 831014,
+        "cot": "melody",
+        "status": "complete",
+        "score_origin": "SheetSage2 transcription",
+        "transfer": {
+          "vocal_notes_before": 56,
+          "vocal_notes_after": 0,
+          "original_ins_notes": 66,
+          "unaltered_ins_notes": 66,
+          "output_ins_notes": 122,
+          "vocal_pitch_onset_duration_preserved": true,
+          "meter_and_tempo_preserved": true,
+          "chords": "removed for melody cover",
+          "overlap_policy": "vocal",
+          "affected_ins_notes": [],
+          "nominal_seconds": 68.57142857142857,
+          "score_origin": "SheetSage2 transcription"
+        },
+        "truncated": {
+          "abc": false,
+          "semantic": false
+        },
+        "exact_abc_verified": true,
+        "exact_prefix_verified": true,
+        "audio_seconds": 66.03866666666667,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 0.8373109102249146,
+        "rms": 0.11991894545816838,
+        "full_scale_samples": 0,
+        "internal_zero_second_blocks": 0,
+        "audio_sha256": "4a10e824ce3a463ded8b186e473c5238f4d0909566ad59be771af533b70286eb"
+      },
+      {
+        "case": "abc-cover-retry",
+        "seed": 831015,
+        "cot": "melody",
+        "status": "complete",
+        "score_origin": "provided score",
+        "transfer": {
+          "vocal_notes_before": 24,
+          "vocal_notes_after": 0,
+          "original_ins_notes": 47,
+          "unaltered_ins_notes": 47,
+          "output_ins_notes": 71,
+          "vocal_pitch_onset_duration_preserved": true,
+          "meter_and_tempo_preserved": true,
+          "chords": "removed for melody cover",
+          "overlap_policy": "vocal",
+          "affected_ins_notes": [],
+          "nominal_seconds": 53.333333333333336,
+          "score_origin": "provided score"
+        },
+        "truncated": {
+          "abc": false,
+          "semantic": false
+        },
+        "exact_abc_verified": true,
+        "exact_prefix_verified": true,
+        "audio_seconds": 52.23866666666667,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 0.45194268226623535,
+        "rms": 0.048384415056578284,
+        "full_scale_samples": 0,
+        "internal_zero_second_blocks": 0,
+        "audio_sha256": "414380d4b63a0c595950af840a474c91d904e53de4fe4b385096707f69dc3609"
+      },
+      {
+        "case": "abc-cover",
+        "seed": 831013,
+        "cot": "melody",
+        "status": "needs_review",
+        "score_origin": "provided score",
+        "transfer": {
+          "vocal_notes_before": 24,
+          "vocal_notes_after": 0,
+          "original_ins_notes": 47,
+          "unaltered_ins_notes": 47,
+          "output_ins_notes": 71,
+          "vocal_pitch_onset_duration_preserved": true,
+          "meter_and_tempo_preserved": true,
+          "chords": "removed for melody cover",
+          "overlap_policy": "vocal",
+          "affected_ins_notes": [],
+          "nominal_seconds": 53.333333333333336,
+          "score_origin": "provided score"
+        },
+        "truncated": {
+          "abc": false,
+          "semantic": true
+        },
+        "exact_abc_verified": true,
+        "exact_prefix_verified": true,
+        "audio_seconds": 359.9986666666667,
+        "sample_rate": 48000,
+        "channels": 2,
+        "peak": 0.5473523139953613,
+        "rms": 0.07018718393569962,
+        "full_scale_samples": 0,
+        "internal_zero_second_blocks": 0,
+        "audio_sha256": "9935db3aa29250f34ccd1c7432bdcf46e1f459c5383131e28991cf75a0a70ee9"
+      }
+    ]
+  },
+  "scope": {
+    "fresh_machine_online_install_tested": false,
+    "human_listening_assessment": false,
+    "transcription_accuracy_assessment": false,
+    "third_party_dependency_security_audit": false
+  },
+  "observed_limitations": [
+    "The first ABC cover reached the 9000-token limit and is retained as a failed attempt.",
+    "The strings output contains 11 full-scale samples; it is retained without normalization or trimming.",
+    "The model chose different tempi from the style requests; score timing was preserved rather than rewritten.",
+    "Symbolic transfer checks do not establish absence of singing or exact audible note realization.",
+    "Audio duration is not constrained to score duration."
+  ],
+  "privacy": {
+    "only_public_model_identifiers": true,
+    "no_audio_in_skill_archive": true,
+    "normalized_zip_metadata": true,
+    "test_reference": "Original synthetic song example"
+  }
+}

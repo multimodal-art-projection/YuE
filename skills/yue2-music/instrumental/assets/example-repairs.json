@@ -1,0 +1,22 @@
+{
+  "fixture_origin": "Synthetic theme authored for this public skill; not a user-provided work",
+  "changes": [
+    "Lead 主旋律放 Ins，Vocal 只放休止和和弦名",
+    "Lead 叠音 [GBd] 取最高音 d；Pad 伴奏交由生成模型实现",
+    "展开两小节反复为四小节，再接两小节 5/8 尾段",
+    "将 M:C 规范为 M:4/4；按 L:1/32 缩放时值",
+    "保留 e>d 的附点节奏、F♯/F♮ 和跨小节 B 连音",
+    "MIDI program、动态和配器移至风格说明"
+  ],
+  "assumptions": [],
+  "unresolved": [],
+  "preserved": [
+    "G 大调",
+    "96 BPM",
+    "6 小节",
+    "最后两小节 5/8",
+    "19 个主旋律起音",
+    "21 个四分音符的总长度",
+    "最后一小节起始半个四分音符后换 G 和弦"
+  ]
+}

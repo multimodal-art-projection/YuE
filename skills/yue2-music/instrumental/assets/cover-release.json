@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "verified_source_date": "2026-09-10",
+  "transcriber": {
+    "repo": "m-a-p/SheetSage2",
+    "revision": "eab522a8168e8b8b8c4856bf8609cd86198f01fe",
+    "weights_sha256": "b235f68091a5f5b644000f2b5acb57d1e70432aca2b34ab1b9cf27236e1f4274"
+  },
+  "base_model": {
+    "repo": "m-a-p/MERT-v2-FullSong",
+    "revision": "d8ba1c745e733b3908ce6ad16ebeb17ac7600a42",
+    "weights_sha256": "e6dd2ab187d6dd62b6521cd7d8f932e237acf0c5757745a7232082e28391350d"
+  },
+  "environment": "Separate SheetSage2 environment; install the pinned snapshot requirements; do not change the YuE2 environment"
+}
