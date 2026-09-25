@@ -1,0 +1,20 @@
+X:1
+T:Synthetic test theme
+M:C
+L:1/8
+Q:1/4=96
+V: Lead clef=treble name="Strings"
+%%MIDI program 48
+V: Pad clef=bass name="Accompaniment"
+K:G
+% verse
+V: Lead
+|: "G"!mf![GBd]2 e>d B2 z2 | "D7"^F2 F2 =F2 z2 :|
+% outro
+M:5/8
+"Em"E2 G2 B-|B "G"G2 D2|]
+V: Pad
+M:C
+|: [G,B,D]8 | [D,F,A,]8 :|
+M:5/8
+[E,G,B,]5|z [G,B,D]4|]

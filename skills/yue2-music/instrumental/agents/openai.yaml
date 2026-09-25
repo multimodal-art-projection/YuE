@@ -1,0 +1,4 @@
+interface:
+  display_name: "YuE2 纯音乐"
+  short_description: "YuE2 自动写谱转纯音乐，也支持录音或曲谱的器乐 cover，交付音频和 prompt"
+  default_prompt: "使用 $yue2-instrumental 生成一段约一分钟的温柔钢琴纯音乐，不要人声，把音频和完整 prompt 给我。"

@@ -1,6 +1,6 @@
 ---
 name: yue2-music
-description: Generate, cover, transcribe, and edit songs with YuE2 and SheetSage2/MERT2. Use for YuE2 full/melody/off generation, audio-to-ABC covers, style or lyric changes, score editing, agentic reharmonization, melody preservation, singable lyric adaptation, and reproducible listening comparisons; also for YuE2 生成、翻唱、改编、改谱、换词和智能体编辑.
+description: Generate instrumental music and songs, cover, transcribe, and edit with YuE2 and SheetSage2/MERT2. Use for text-to-instrumental generation, instrumental covers, YuE2 full/melody/off generation, audio-to-ABC covers, style or lyric changes, score editing, agentic reharmonization, melody preservation, singable lyric adaptation, and reproducible listening comparisons; also for YuE2 纯音乐生成、器乐翻奏、翻唱、改编、改谱、换词和智能体编辑.
 ---
 
 # YuE2 Music
@@ -8,10 +8,24 @@ description: Generate, cover, transcribe, and edit songs with YuE2 and SheetSage
 Turn a musical request into a reproducible song and an audible comparison. Use released
 model interfaces. Retain an original song and its plan before making changes.
 
+Recommended agent: **GPT-6 Astra**. YuE2 composes the default score and renders the audio;
+the agent operates the workflow and checks the results.
+
+## Instrumental generation and covers
+
+For instrumental, no-vocals, or 纯音乐 requests, follow
+[instrumental/SKILL.md](instrumental/SKILL.md). A simple style description is enough.
+Default to YuE2 planning, move every Vocal note to Ins, and render the revised score.
+Only write a new score with the agent when the user explicitly asks for agent composition.
+Given audio or ABC, use the instrumental cover workflow and retain the reference melody.
+Deliver playable audio and the actual prompt; the user does not need to specify voice names
+or inference parameters. Script and setup paths in that workflow are relative to `instrumental/`.
+
 ## Choose the workflow
 
 | Request | Workflow |
 | --- | --- |
+| Instrumental music from text, audio, or ABC | [Instrumental workflow](instrumental/SKILL.md) → audio + prompt |
 | Generate with editable melody and harmony | YuE2 `cot="full"` → ABC → song |
 | Generate with a melody plan and free accompaniment | YuE2 `cot="melody"` → chord-free ABC → song |
 | Generate without symbolic planning | YuE2 `cot="off"` → song; no editable ABC |
@@ -39,6 +53,7 @@ from the official GitHub repository source. Use a separate environment
 for SheetSage2 because dependency pins differ. Download the public model snapshots and
 record their revisions. This skill's original instructions, helpers, and templates are
 licensed under [Apache 2.0](LICENSE). Copyright (c) 2026 the YuE2 authors.
+The bundled instrumental helpers retain their [MIT license](instrumental/LICENSE).
 Model weights and third-party dependencies retain their applicable licenses.
 
 Use the supported baseline: one request at a time, BF16-capable NVIDIA GPU with 24 GB

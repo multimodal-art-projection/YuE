@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "verified_on": "2026-09-22",
+  "package_version": "0.1.5",
+  "wheel_url": "https://huggingface.co/m-a-p/YuE2-3B/resolve/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7/yue2_infer-0.1.5-py3-none-any.whl",
+  "wheel_sha256": "8801e2c0d969db02df78d2994150b4ccd86077d87c24fdb8509b1f6f31462641",
+  "models": {
+    "YuE2-3B": {
+      "repo": "m-a-p/YuE2-3B",
+      "revision": "14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+      "weights_sha256": "1d55c42c1a9875c34f5d736e15078449992b044e807ce2a138e6cf289a1e59e9",
+      "weights_bytes": 7261441640,
+      "core_files": {
+        "config.json": {
+          "bytes": 959,
+          "git_blob_sha1": "9584e50ba9d6e487690544e14dd7555edbe27973"
+        },
+        "weights_manifest.json": {
+          "bytes": 179,
+          "git_blob_sha1": "5ac0adb948bf8d8987ce7a1401fc39d0842b709d"
+        },
+        "model.safetensors": {
+          "bytes": 7261441640,
+          "sha256": "1d55c42c1a9875c34f5d736e15078449992b044e807ce2a138e6cf289a1e59e9"
+        },
+        "qwen.tiktoken": {
+          "bytes": 2561218,
+          "git_blob_sha1": "9b9b0e0416d84d7c88333eb261c77e5fe2d7f7be"
+        },
+        "generation_config.json": {
+          "bytes": 204,
+          "git_blob_sha1": "041d89f512a1b79c13e1a3dee54b5a9bc7c26cad"
+        },
+        "yue2_generation_config.json": {
+          "bytes": 466,
+          "git_blob_sha1": "f8214009f5bb5425319e4519b12e4853ad72acf3"
+        }
+      }
+    },
+    "YuE2-Vae": {
+      "repo": "m-a-p/YuE2-Vae",
+      "revision": "9a94e1d0ea9f8087e98f77fa88df4a4068104d2a",
+      "weights_sha256": "807ce9d5149fa27c5ad3e6582058469852e908f6c5acc8c8aa338e7ab7751346",
+      "weights_bytes": 530512720,
+      "core_files": {
+        "config.json": {
+          "bytes": 1378,
+          "git_blob_sha1": "f68832bef1b99f53dd70460f6b0d336971a664b8"
+        },
+        "weights_manifest.json": {
+          "bytes": 178,
+          "git_blob_sha1": "c663bbfcc6238d5b35cd61bee56e6aab4c7e3876"
+        },
+        "model.safetensors": {
+          "bytes": 530512720,
+          "sha256": "807ce9d5149fa27c5ad3e6582058469852e908f6c5acc8c8aa338e7ab7751346"
+        }
+      }
+    }
+  }
+}

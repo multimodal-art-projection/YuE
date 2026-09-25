@@ -35,3 +35,7 @@ jobs:
           yue2 doctor
       - name: Run tests without model downloads
         run: python -m pytest -q
+      - name: Check instrumental workflow and portable bundle
+        run: |
+          python -B skills/yue2-music/instrumental/scripts/test_tools.py
+          python -B tools/build_release.py --skill-only --output /tmp/yue2-skill-dist
