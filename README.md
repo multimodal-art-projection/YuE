@@ -252,6 +252,8 @@ To reproduce the reported benchmark scores, follow the instructions on [🤗 Wil
 
 MERT2 feature extraction is optional for generation. YuE2's pipeline does not require a separate MERT2 model download. [Demos and interactive results](https://map-yue2.github.io/) · [Release downloads](https://github.com/multimodal-art-projection/YuE/releases/tag/yue2-v0.1.6).
 
+Community-maintained ecosystem list: [awesome-YuE](https://github.com/RevolutionLA/awesome-YuE) — 70+ YuE / YuE2 projects: UIs, quantized runtimes, ComfyUI nodes, Mac/MLX ports, serving templates and tutorials (CC0, EN/CN).
+
 ## License
 
 | Use | Terms |
