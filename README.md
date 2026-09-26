@@ -16,6 +16,7 @@
 <p align="center"><strong>Compose in symbols. Create in sound.</strong></p>
 
 <p align="center">
+  <a href="docs/technical_report.pdf">📄 Technical report</a> ·
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
   <a href="https://yue.noizai.net/">🚀 Try online (free)</a> ·
   <a href="https://arena.3-148-255-99.sslip.io:8080">🗳️ Music Arena</a> ·
@@ -64,6 +65,7 @@
 
 <a id="music-arena"></a>
 
+- **📄 September 26, 2026 — YuE2 technical report.** Our [technical report](docs/technical_report.pdf) is now available, with the full model and training methods, automatic and expert listening results, and evaluations of score editing and zero-shot covers.
 - **🎹 September 25, 2026 — Instrumental generation and covers.** The [yue2-music agent skill](#agent-skill) now turns a simple description, ABC score, or reference recording into instrumental music. YuE2 writes the score by default; the skill moves the vocal melody into the instrumental part before rendering. **Recommended agent: GPT-6 Astra.** [Download the updated skill →](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-music-v1.2.0/yue2-music.zip)
 - **🎧 YuE2 needs your ears.** We're running a public blind listening study comparing YuE2 with leading proprietary music generation systems. Hear anonymous clips and choose A, B, or a tie. **[Listen & vote →](https://arena.3-148-255-99.sslip.io:8080)** · No account needed; headphones recommended.
 - **🚀 Try YuE2 online for free.** Create a song in your browser with the [NOIZ-hosted demo →](https://yue.noizai.net/). No installation required.
@@ -242,6 +244,7 @@ To reproduce the reported benchmark scores, follow the instructions on [🤗 Wil
 
 | Resource | Purpose |
 |---|---|
+| [📄 Technical report](docs/technical_report.pdf) | Model, training, and evaluation details |
 | [🤗 YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) | Song generation, symbolic planning, covering, and editing |
 | [🤗 YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae) | Default generation and listening decoder |
 | [🤗 YuE2-Vae-legacy](https://huggingface.co/m-a-p/YuE2-Vae-legacy) | Decoder for the reported benchmark protocol |
@@ -270,7 +273,7 @@ We strongly encourage crediting **YuE2** or using **#YuE2** when sharing generat
 
 ## Citation
 
-The YuE2 technical report is coming soon. For now, please cite **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https://arxiv.org/abs/2503.08638)**:
+The [YuE2 technical report](docs/technical_report.pdf) is now available. For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https://arxiv.org/abs/2503.08638)** models, please cite:
 
 ```bibtex
 @article{li2023mert,
