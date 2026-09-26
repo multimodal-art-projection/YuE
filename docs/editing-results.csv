@@ -1,0 +1,30 @@
+category,condition,metric,value,unit,sources,recordings,scorer
+adherence,Melody,Target-pitch accuracy,84.1664042136033,percent,190,380,SheetSage2-Prober
+adherence,Harmony,Target-chord agreement,79.54172216193108,percent,181,362,SheetSage2-AR
+adherence,Rhythm,Relative onset accuracy,73.42679127725856,percent,107,214,SheetSage2-Prober
+adherence,Key,Weighted key score,90.58307236253115,score_0_to_100,191,1528,SheetSage2-Prober
+adherence,Tempo,Acc2,95.68062827225131,percent,191,764,madmom
+preservation,Melody,Melody agreement,93.09721684438009,percent,184,368,SheetSage2-AR
+preservation,Melody,Harmony agreement,94.04665356724095,percent,184,368,SheetSage2-AR
+preservation,Harmony,Melody agreement,93.43132540462916,percent,181,362,SheetSage2-AR
+preservation,Harmony,Harmony agreement,90.15672060267093,percent,170,340,SheetSage2-AR
+preservation,Rhythm,Melody agreement,94.34069152712046,percent,104,207,SheetSage2-AR
+preservation,Rhythm,Harmony agreement,93.08396790102255,percent,104,207,SheetSage2-AR
+quality_and_lyrics,Unedited,SongBench Avg,6.704313313388183,score_0_to_10,191,382,SongBench
+quality_and_lyrics,Unedited,PER,0.18449258613683697,ratio,191,382,Qwen3-ASR
+quality_and_lyrics,Unedited,CER,0.18098291132322403,ratio,191,382,Qwen3-ASR
+quality_and_lyrics,Melody,SongBench Avg,6.71677977443609,score_0_to_10,190,380,SongBench
+quality_and_lyrics,Melody,PER,0.19119293382110905,ratio,190,380,Qwen3-ASR
+quality_and_lyrics,Melody,CER,0.18063548863489537,ratio,190,380,Qwen3-ASR
+quality_and_lyrics,Harmony,SongBench Avg,6.673595264404104,score_0_to_10,181,362,SongBench
+quality_and_lyrics,Harmony,PER,0.17872007430860196,ratio,181,362,Qwen3-ASR
+quality_and_lyrics,Harmony,CER,0.17472381101068116,ratio,181,362,Qwen3-ASR
+quality_and_lyrics,Key,SongBench Avg,6.638605862004487,score_0_to_10,191,1528,SongBench
+quality_and_lyrics,Key,PER,0.18976970902077342,ratio,191,1528,Qwen3-ASR
+quality_and_lyrics,Key,CER,0.1879552406910458,ratio,191,1528,Qwen3-ASR
+quality_and_lyrics,Unedited (rhythm),SongBench Avg,6.727969359145527,score_0_to_10,107,214,SongBench
+quality_and_lyrics,Unedited (rhythm),PER,0.21396205924704959,ratio,107,214,Qwen3-ASR
+quality_and_lyrics,Unedited (rhythm),CER,0.19658105187817837,ratio,107,214,Qwen3-ASR
+quality_and_lyrics,Rhythm,SongBench Avg,6.731467890520695,score_0_to_10,107,214,SongBench
+quality_and_lyrics,Rhythm,PER,0.18504563294632434,ratio,107,214,Qwen3-ASR
+quality_and_lyrics,Rhythm,CER,0.1748192414321946,ratio,107,214,Qwen3-ASR

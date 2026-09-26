@@ -42,22 +42,97 @@ The overview figure combines SongBench and SongEval into a normalized song-quali
 
 ## Zero-shot cover generation
 
-The cover evaluation uses **948 SHS100K works**, two requested styles and two seeds per work: **3,792 outputs per method**, without candidate selection. All YuE2 conditions use the general song-generation checkpoint and the benchmark decoder. The generator received no original–cover paired supervision or cover-specific fine-tuning; exclusion of the evaluated works from generator training was confirmed by the authors. This claim does not assert training-data exclusion for external analyzers, evaluators, or comparison models.
+The cover evaluation uses **948 SHS100K test works**, two requested styles and two seeds per work: **3,792 outputs per method**, without candidate selection. All YuE2 conditions use the general song-generation checkpoint and the benchmark decoder. The generator received no original–cover paired supervision or cover-specific fine-tuning; exclusion of the evaluated works, including alternate performances, from generator training was verified using CLEWS and Discogs-VINet. This claim concerns YuE2's generator training; it does not assert training-data exclusion for external analyzers, evaluators, or comparison models.
 
-| Method | CLEWS mAP ↑ | CLEWS Hit@1 ↑ | Discogs-VINet mAP ↑ | MuLan ↑ | SongBench Musicality ↑ |
-|---|---:|---:|---:|---:|---:|
-| SongEcho | 0.419 | 48.4% | 0.122 | 0.366 | 3.286 |
-| ACE-Step 1.5 | 0.024 | 2.4% | 0.006 | 0.166 | 3.689 |
-| YuE2 (full score) | 0.647 | 71.3% | 0.288 | 0.382 | 5.104 |
-| YuE2 (without chords) | 0.598 | 67.3% | 0.179 | 0.417 | 5.490 |
-| YuE2 (without score) | 0.006 | 0.3% | 0.004 | 0.474 | 5.691 |
+One recording supplies each source score and its automatically transcribed lyrics. Two other performances of the same work supply contrasting target-style descriptions. YuE2 receives the fixed score, lyrics, and target style; SongEcho and ACE-Step 1.5 receive source audio, lyrics, and target style through their native cover interfaces. YuE2's three conditions share the generator and decoder. Removing chords also changes score serialization.
 
-CLEWS and Discogs-VINet assess preserved work identity against a source-excluded retrieval gallery of 10,545 recordings per query. MuLan assesses alignment with the requested target style; SongBench measures musicality. Every metric displayed here covers all 3,792 outputs per method. Incomplete Q3O results are omitted.
+**CLEWS work-identity retrieval**
 
-The full score best preserves work identity in this comparison. Relaxing the supplied score improves target-style alignment and quality in the current cover configuration. These are distinct outcomes: a fixed transcription from a source performance can constrain adaptation to a contrasting style. This does not show that generating a fresh symbolic plan from the current prompt reduces quality. Product guidance recommends melody-only covers to leave accompaniment freer to adapt.
+| Method | mAP ↑ | MRR ↑ | Hit@1 (%) ↑ | Hit@5 (%) ↑ |
+|---|---:|---:|---:|---:|
+| SongEcho | 0.419 | 0.536 | 48.4 | 58.8 |
+| ACE-Step 1.5 | 0.024 | 0.036 | 2.4 | 4.1 |
+| YuE2 (full score) | 0.647 | 0.748 | 71.3 | 78.6 |
+| YuE2 (without chords) | 0.598 | 0.715 | 67.3 | 76.1 |
+| YuE2 (without score) | 0.006 | 0.008 | 0.3 | 0.9 |
+
+**Discogs-VINet work-identity retrieval**
+
+| Method | mAP ↑ | MRR ↑ | Hit@1 (%) ↑ | Hit@5 (%) ↑ |
+|---|---:|---:|---:|---:|
+| SongEcho | 0.122 | 0.227 | 16.6 | 28.4 |
+| ACE-Step 1.5 | 0.006 | 0.014 | 0.6 | 1.4 |
+| YuE2 (full score) | 0.288 | 0.438 | 37.5 | 50.3 |
+| YuE2 (without chords) | 0.179 | 0.304 | 23.6 | 36.6 |
+| YuE2 (without score) | 0.004 | 0.008 | 0.2 | 0.8 |
+
+Both encoders rank the same gallery of 10,546 recordings from 1,692 works. Each generated query excludes its exact source recording, leaving **10,545 candidates**; other recordings of the source work are relevant matches. mAP measures average precision, MRR measures the reciprocal rank of the first relevant result, and Hit@k is the percentage of queries with a relevant result in the first k ranks. All eight retrieval metrics cover all 3,792 outputs per method. **Full-score YuE2 leads both evaluated cover systems on all eight retrieval measures.**
+
+**Target-style alignment and audio quality**
+
+| Method | MuLan ↑ | Q3O ↑ | AudioBox PQ ↑ | SongBench Musicality ↑ |
+|---|---:|---:|---:|---:|
+| SongEcho | 0.366 | 4.474 | 6.862 | 3.286 |
+| ACE-Step 1.5 | 0.166 | 4.190 | 6.918 | 3.689 |
+| YuE2 (full score) | 0.382 | 4.273 | 8.044 | 5.104 |
+| YuE2 (without chords) | 0.417 | 4.482 | 8.117 | 5.490 |
+| YuE2 (without score) | 0.474 | 4.837 | 8.186 | 5.691 |
+
+MuLan measures alignment with the requested target-style text, excluding lyrics. AudioBox PQ measures production quality, and SongBench measures Musicality; these three columns cover all **3,792 outputs per method**. Q3O is a 0–5 target-style score on the same **3,286 outputs per method (86.7%)**, matched across methods by source, style, and seed. This available-case subset covers 933 works: 710 contribute four outputs and 223 contribute two; 506 outputs per method are unscored. It is not the full-cohort Q3O mean. Qwen3-Omni supplies both target-style annotations and Q3O judgments. The downloadable results also retain the supplementary AllMusicCaps scores.
+
+Full-score YuE2 leads the two external systems in production quality and Musicality as well as retrieval. Within YuE2, retaining source harmony gives the strongest work-identity retrieval, while removing chords allows greater target-style adaptation and raises quality scores. Removing the entire score further raises alignment and quality while losing work identity. These findings concern rendering a fixed source composition in a contrasting style. The [cover guide](covers.md) explains the full-score and melody-only settings.
+
+[Cover results CSV](cover-results.csv) · [Scores, units, and metric coverage JSON](cover-results.json)
 
 ## Editing evidence
 
-A separate paired editing study uses ten original works, two seeds, and 380 full-song recordings. Local changed-note melody attainment increases from 0.0083 to 0.9375; changed-duration harmony attainment increases from 0 to 0.8313. Their units differ and should not be combined into one score. Content outside melody/harmony edits remains close to unedited regeneration on the automatic measurements.
+The controlled score-editing evaluation uses the first generated score for each of **192 WildSongBench prompts**, with two seeds per applicable condition and **3,844 full-song recordings**, including unedited controls. All outputs are retained, including 32 at the six-minute cap. Lyrics, style, model, benchmark decoder, and sampling settings stay fixed. Scores are averaged over seeds and edit strengths within each source, then over sources with equal weight.
 
-This is evidence for selective control through the score, not identical waveform preservation. The measurements cover ten works and were developed on that cohort. The public agentic demo illustrates a multi-step workflow; it is not a separate statistically controlled human-preference study.
+**Edit adherence**
+
+| Edit | Adherence metric | Score (0–100) ↑ | Sources | Recordings |
+|---|---:|---:|---:|---:|
+| Melody | Target-pitch accuracy | 84.17 | 190 | 380 |
+| Harmony | Target-chord agreement | 79.54 | 181 | 362 |
+| Rhythm | Relative onset accuracy | 73.43 | 107 | 214 |
+| Key | Weighted key score | 90.58 | 191 | 1528 |
+| Tempo | Acc2 | 95.68 | 191 | 764 |
+
+Melody and rhythm edits affect up to four bars of the first chorus. Melody edits raise vocal pitches by two scale steps; rhythm edits exchange adjacent quarter- and eighth-note durations while preserving pitches and each pair's total duration. Harmony edits change chord roots and bass notes while preserving chord quality and timing, and extend substitutions to matching phrases. Key edits transpose the complete score by −5, −2, +2, or +5 semitones. Tempo edits multiply BPM by 0.8 or 1.2, with the target rounded to an integer. Eligibility depends on the applicable score content: 190 melody, 181 harmony, 107 rhythm, and 191 key/tempo sources.
+
+Harmony adherence and all content-preservation scores use SheetSage2-AR; melody, rhythm, and key adherence use SheetSage2-Prober. The public AR analysis uses 300-second windows, 200-second overlap, and 100-second lookahead. Tempo is estimated directly from audio using madmom; the target score does not enter beat tracking.
+
+- **Melody:** exact target-pitch accuracy on edited notes.
+- **Harmony:** duration-weighted root-and-triad agreement in the edited chorus window. Unchanged vocal notes locate the window.
+- **Rhythm:** relative onset intervals after normalizing local offset and tempo; an interval must be within 1/8 beat of the edited target and closer to it than to the original timing. Unresolved correspondences count as misses. Correspondence coverage is **80.36%** across 210 source note pairs.
+- **Key:** agreement with target tonic and mode, with partial credit for related keys.
+- **Tempo:** Acc2 accepts BPM estimates within 4% of the rounded target times any of {1/3, 1/2, 1, 2, 3}. The stricter target-beat-level Acc1 is **75.92%** on the same 764 recordings.
+
+Missing events and unresolved contexts score zero for melody/harmony adherence. The rows measure different aspects of control and are not combined into an overall adherence score.
+
+**Content preservation**
+
+| Edit | Melody agreement (%) ↑ | Harmony agreement (%) ↑ |
+|---|---:|---:|
+| Melody | 93.10 | 94.05 |
+| Harmony | 93.43 | 90.16 |
+| Rhythm | 94.34 | 93.08 |
+
+These scores compare unedited melody and harmony with the source composition. Melody and rhythm edits are evaluated outside the edited content; harmony edits retain the full vocal melody and compare unchanged chords outside all edited spans. Undefined preservation scores are excluded. Melody-edit preservation covers **368 recordings from 184 sources**; rhythm-edit preservation covers **207 from 104**. For harmony edits, melody agreement covers **362 from 181**, while unchanged-chord agreement covers **340 from 170**. Each metric averages available seeds within its evaluable sources, then weights sources equally.
+
+**Song quality and lyric retention**
+
+| Condition | SongBench Avg ↑ | PER ↓ | CER ↓ |
+|---|---:|---:|---:|
+| Unedited | 6.704 | 0.184 | 0.181 |
+| Melody | 6.717 | 0.191 | 0.181 |
+| Harmony | 6.674 | 0.179 | 0.175 |
+| Key | 6.639 | 0.190 | 0.188 |
+| Unedited (rhythm) | 6.728 | 0.214 | 0.197 |
+| Rhythm | 6.731 | 0.185 | 0.175 |
+
+SongBench Avg averages seven quality dimensions on a 0–10 scale. PER and CER are phoneme and character error rates, shown as ratios; lower is better. They use greedy audio-only Qwen3-ASR transcripts. The rhythm rows use their own matched source scores and generation seeds. Source and recording counts for every metric are included in the downloadable results.
+
+The results support selective control of musical content through the score. Editing regenerates the entire recording; preserved score content does not imply an identical waveform, voice, or timbre. These tables report point estimates, without a claim of statistical significance or human preference. The [agentic editing demo](https://map-yue2.github.io/#agentic-music-editing) illustrates a multi-step workflow; it is distinct from this controlled score-editing evaluation. See the [editing guide](editing.md) for usage.
+
+[Editing results CSV](editing-results.csv) · [Scores, effective denominators, and metric definitions JSON](editing-results.json)

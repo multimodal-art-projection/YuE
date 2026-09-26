@@ -1,0 +1,336 @@
+{
+  "dataset": "WildSongBench",
+  "prompts": 192,
+  "recordings_including_controls": 3844,
+  "seeds_per_condition": 2,
+  "candidate_selection": false,
+  "six_minute_truncations_retained": 32,
+  "aggregation": "Average seeds and edit strengths within each source, then weight sources equally. Preservation excludes undefined scores; attainment retains unresolved contexts as zero.",
+  "evaluation_decoder": "m-a-p/YuE2-Vae-legacy",
+  "cohort_recordings": {
+    "Unedited": 382,
+    "Melody": 380,
+    "Harmony": 362,
+    "Key": 1528,
+    "Tempo": 764,
+    "Unedited (rhythm)": 214,
+    "Rhythm": 214
+  },
+  "metric_definitions": {
+    "Target-pitch accuracy": "Exact target-pitch accuracy on edited vocal notes; missing events and unresolved contexts score zero.",
+    "Target-chord agreement": "Duration-weighted root-and-triad agreement in the edited chorus window; missing events and unresolved contexts score zero.",
+    "Relative onset accuracy": "Relative onset intervals normalized for local offset and tempo; within 1/8 beat of the edited target and closer to it than to the original interval. Missing or ambiguous correspondences score zero.",
+    "Weighted key score": "Agreement with target tonic and mode, with partial credit for related keys; weighted by annotated audio duration, with unknown intervals scored zero.",
+    "Acc2": "Audio-estimated BPM within 4% of the rounded target times any of {1/3, 1/2, 1, 2, 3}.",
+    "Melody agreement": "Agreement with unchanged source-score melody; harmony edits retain and compare the full vocal melody.",
+    "Harmony agreement": "Agreement with unchanged source-score harmony; harmony edits compare only unchanged chords outside all edited spans.",
+    "SongBench Avg": "Mean of seven SongBench quality dimensions.",
+    "PER": "Phoneme error rate from greedy audio-only Qwen3-ASR transcripts; lower is better.",
+    "CER": "Character error rate after Unicode normalization, case folding, and removal of section tags and punctuation; lower is better."
+  },
+  "results": [
+    {
+      "category": "adherence",
+      "condition": "Melody",
+      "metric": "Target-pitch accuracy",
+      "value": 84.1664042136033,
+      "unit": "percent",
+      "sources": 190,
+      "recordings": 380,
+      "scorer": "SheetSage2-Prober"
+    },
+    {
+      "category": "adherence",
+      "condition": "Harmony",
+      "metric": "Target-chord agreement",
+      "value": 79.54172216193108,
+      "unit": "percent",
+      "sources": 181,
+      "recordings": 362,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "adherence",
+      "condition": "Rhythm",
+      "metric": "Relative onset accuracy",
+      "value": 73.42679127725856,
+      "unit": "percent",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "SheetSage2-Prober"
+    },
+    {
+      "category": "adherence",
+      "condition": "Key",
+      "metric": "Weighted key score",
+      "value": 90.58307236253115,
+      "unit": "score_0_to_100",
+      "sources": 191,
+      "recordings": 1528,
+      "scorer": "SheetSage2-Prober"
+    },
+    {
+      "category": "adherence",
+      "condition": "Tempo",
+      "metric": "Acc2",
+      "value": 95.68062827225131,
+      "unit": "percent",
+      "sources": 191,
+      "recordings": 764,
+      "scorer": "madmom"
+    },
+    {
+      "category": "preservation",
+      "condition": "Melody",
+      "metric": "Melody agreement",
+      "value": 93.09721684438009,
+      "unit": "percent",
+      "sources": 184,
+      "recordings": 368,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "preservation",
+      "condition": "Melody",
+      "metric": "Harmony agreement",
+      "value": 94.04665356724095,
+      "unit": "percent",
+      "sources": 184,
+      "recordings": 368,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "preservation",
+      "condition": "Harmony",
+      "metric": "Melody agreement",
+      "value": 93.43132540462916,
+      "unit": "percent",
+      "sources": 181,
+      "recordings": 362,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "preservation",
+      "condition": "Harmony",
+      "metric": "Harmony agreement",
+      "value": 90.15672060267093,
+      "unit": "percent",
+      "sources": 170,
+      "recordings": 340,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "preservation",
+      "condition": "Rhythm",
+      "metric": "Melody agreement",
+      "value": 94.34069152712046,
+      "unit": "percent",
+      "sources": 104,
+      "recordings": 207,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "preservation",
+      "condition": "Rhythm",
+      "metric": "Harmony agreement",
+      "value": 93.08396790102255,
+      "unit": "percent",
+      "sources": 104,
+      "recordings": 207,
+      "scorer": "SheetSage2-AR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Unedited",
+      "metric": "SongBench Avg",
+      "value": 6.704313313388183,
+      "unit": "score_0_to_10",
+      "sources": 191,
+      "recordings": 382,
+      "scorer": "SongBench"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Unedited",
+      "metric": "PER",
+      "value": 0.18449258613683697,
+      "unit": "ratio",
+      "sources": 191,
+      "recordings": 382,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Unedited",
+      "metric": "CER",
+      "value": 0.18098291132322403,
+      "unit": "ratio",
+      "sources": 191,
+      "recordings": 382,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Melody",
+      "metric": "SongBench Avg",
+      "value": 6.71677977443609,
+      "unit": "score_0_to_10",
+      "sources": 190,
+      "recordings": 380,
+      "scorer": "SongBench"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Melody",
+      "metric": "PER",
+      "value": 0.19119293382110905,
+      "unit": "ratio",
+      "sources": 190,
+      "recordings": 380,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Melody",
+      "metric": "CER",
+      "value": 0.18063548863489537,
+      "unit": "ratio",
+      "sources": 190,
+      "recordings": 380,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Harmony",
+      "metric": "SongBench Avg",
+      "value": 6.673595264404104,
+      "unit": "score_0_to_10",
+      "sources": 181,
+      "recordings": 362,
+      "scorer": "SongBench"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Harmony",
+      "metric": "PER",
+      "value": 0.17872007430860196,
+      "unit": "ratio",
+      "sources": 181,
+      "recordings": 362,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Harmony",
+      "metric": "CER",
+      "value": 0.17472381101068116,
+      "unit": "ratio",
+      "sources": 181,
+      "recordings": 362,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Key",
+      "metric": "SongBench Avg",
+      "value": 6.638605862004487,
+      "unit": "score_0_to_10",
+      "sources": 191,
+      "recordings": 1528,
+      "scorer": "SongBench"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Key",
+      "metric": "PER",
+      "value": 0.18976970902077342,
+      "unit": "ratio",
+      "sources": 191,
+      "recordings": 1528,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Key",
+      "metric": "CER",
+      "value": 0.1879552406910458,
+      "unit": "ratio",
+      "sources": 191,
+      "recordings": 1528,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Unedited (rhythm)",
+      "metric": "SongBench Avg",
+      "value": 6.727969359145527,
+      "unit": "score_0_to_10",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "SongBench"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Unedited (rhythm)",
+      "metric": "PER",
+      "value": 0.21396205924704959,
+      "unit": "ratio",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Unedited (rhythm)",
+      "metric": "CER",
+      "value": 0.19658105187817837,
+      "unit": "ratio",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Rhythm",
+      "metric": "SongBench Avg",
+      "value": 6.731467890520695,
+      "unit": "score_0_to_10",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "SongBench"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Rhythm",
+      "metric": "PER",
+      "value": 0.18504563294632434,
+      "unit": "ratio",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "Qwen3-ASR"
+    },
+    {
+      "category": "quality_and_lyrics",
+      "condition": "Rhythm",
+      "metric": "CER",
+      "value": 0.1748192414321946,
+      "unit": "ratio",
+      "sources": 107,
+      "recordings": 214,
+      "scorer": "Qwen3-ASR"
+    }
+  ],
+  "additional_tempo_metric": {
+    "metric": "Acc1",
+    "value_percent": 75.91623036649214,
+    "sources": 191,
+    "recordings": 764,
+    "definition": "Audio-estimated BPM within 4% of the rounded target at the target beat level only."
+  },
+  "rhythm_correspondence": {
+    "coverage_percent": 80.3582554517134,
+    "source_note_pairs": 210,
+    "sources": 107,
+    "edited_recordings": 214
+  }
+}
