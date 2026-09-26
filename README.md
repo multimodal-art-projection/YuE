@@ -228,13 +228,13 @@ To reproduce the reported benchmark scores, follow the instructions on [🤗 Wil
 
 ## MERT2
 
-**State-of-the-art music understanding:** SOTA on **14 of 15 MARBLE metrics**, with **91.72% genre accuracy on GTZAN**.
+**State-of-the-art music understanding:** MERT2-30s leads on **14 of 15 MARBLE metrics**, and MERT2-FS (full-song) leads on **13 of 15**, each against the listed external baselines. MERT2-30s reaches **91.72% genre accuracy on GTZAN**.
 
 [Demo and results](https://map-yue2.github.io/#mert2) · [🤗 MERT2-30s](https://huggingface.co/m-a-p/MERT-v2-30s) · [🤗 MERT2-FS](https://huggingface.co/m-a-p/MERT-v2-FullSong)
 
 ## SheetSage2
 
-**State-of-the-art audio-to-score transcription:** SOTA on **10 of 13 benchmark metrics**, with **82.51% vocal melody pitch-class F1 on RWC-Pop**.
+**State-of-the-art audio-to-score transcription:** SheetSage2-AR leads on **12 of 15 benchmark metrics** in the reported comparison, including JAAH chord recognition and Rock Corpus vocal melody transcription. Vocal melody pitch-class F1 is **82.51% on RWC-Pop** and **67.08% on Rock Corpus**.
 
 [Demo and results](https://map-yue2.github.io/#sheetsage2) · [🤗 Model and inference](https://huggingface.co/m-a-p/SheetSage2)
 
