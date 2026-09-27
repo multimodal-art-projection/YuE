@@ -53,6 +53,14 @@
 
 **YuE2 brings frontier song quality to music generation with an editable composition.** Give it lyrics and a style prompt: it writes a melody-and-chord plan, then realizes that plan as a complete song with vocals and accompaniment.
 
+<a id="music-arena"></a>
+
+> **🎧 YuE2 needs your ears**
+>
+> We're running a public blind listening study comparing YuE2 with leading proprietary music generation systems. Hear anonymous clips and choose A, B, or a tie.
+>
+> **[Listen & vote →](https://arena.3-148-255-99.sslip.io:8080)** · No account needed; headphones recommended.
+
 - **Frontier quality.** YuE2 is competitive with Suno v5/v6 on WildSongBench. YuE2 (best-of-8) achieves **6.9632 SongBench Avg**, the highest observed mean among all evaluated settings.
 - **White-box music generation through symbolic planning.** Read, play, and change the composition before rendering it. Melody and chords become explicit controls that a person or an agent can inspect and edit.
 - **Zero-shot covers and agentic editing.** Reimagine a transcribed song in a new style, or refine a song through a conversation about its score, arrangement, and lyrics—all with the same generation checkpoint.
@@ -63,11 +71,8 @@
 
 ## News
 
-<a id="music-arena"></a>
-
 - **📄 September 26, 2026 — YuE2 technical report.** Our [technical report](docs/technical_report.pdf) is now available, with the full model and training methods, automatic and expert listening results, and evaluations of score editing and zero-shot covers.
 - **🎹 September 25, 2026 — Instrumental generation and covers.** The [yue2-music agent skill](#agent-skill) now turns a simple description, ABC score, or reference recording into instrumental music. YuE2 writes the score by default; the skill moves the vocal melody into the instrumental part before rendering. **Recommended agent: GPT-6 Astra.** [Download the updated skill →](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-music-v1.2.0/yue2-music.zip)
-- **🎧 YuE2 needs your ears.** We're running a public blind listening study comparing YuE2 with leading proprietary music generation systems. Hear anonymous clips and choose A, B, or a tie. **[Listen & vote →](https://arena.3-148-255-99.sslip.io:8080)** · No account needed; headphones recommended.
 - **🚀 Try YuE2 online for free.** Create a song in your browser with the [NOIZ-hosted demo →](https://yue.noizai.net/). No installation required.
 - **⚡ YuE2-Turbo.** [NOIZ's inference and serving toolkit →](https://github.com/NoizAI/YuE2-Turbo) accelerates YuE2 and supports concurrent requests.
 - **🎛️ ComfyUI.** YuE2 has native nodes and an [official text-to-music workflow →](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/audio_yue2_text2music.json).
