@@ -323,7 +323,7 @@ The [YuE2 technical report](docs/technical_report.pdf) is now available. For the
         <a href="assets/wechat-yue2-group.png">
           <img src="assets/wechat-yue2-group.png" alt="YuE2 WeChat group QR code" width="240" />
         </a><br>
-        <sub>Click to enlarge<br>Valid until Sep 29, 2026</sub>
+        <sub>Click to enlarge<br>Valid until Oct 5, 2026</sub>
       </details>
     </td>
   </tr>
