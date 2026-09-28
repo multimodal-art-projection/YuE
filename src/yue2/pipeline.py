@@ -5,6 +5,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import dataclasses
 import json
+import os
 import time
 import numpy as np
 import torch
@@ -372,6 +373,7 @@ class YuE2Pipeline:
                 "vae_core_frames": self.vae_core_frames, "vae_halo_frames": 16,
                 "device": str(self.device), "memory_budget_gib": self.memory_budget_gib,
                 "offload_ar": self.offload_ar, "runtime_sha256": self.runtime_sha256,
+                "runtime_environment": {"miopen_find_mode": os.environ.get("MIOPEN_FIND_MODE")},
                 "decoder_release": json.loads((self.vae_dir / "config.json").read_text()).get("release_variant"),
                 "validation_status": "unvalidated"}
 

@@ -24,6 +24,13 @@ def model_paths(args):
     return model, vae
 
 
+def apply_runtime_options(args):
+    """Apply explicit process-local runtime controls before loading PyTorch models."""
+    miopen_find_mode = getattr(args, "miopen_find_mode", None)
+    if miopen_find_mode is not None:
+        os.environ["MIOPEN_FIND_MODE"] = miopen_find_mode
+
+
 def get_pipe(args):
     from .pipeline import YuE2Pipeline
     from .protocol import GenerationConfig
@@ -74,6 +81,7 @@ def doctor(args):
                         "compute_capability": [p.major, p.minor]})
     report = {"dependencies_ready": all(versions.values()), "versions": versions,
               "cuda": devices, "mps_available": torch.backends.mps.is_available(),
+              "runtime_environment": {"miopen_find_mode": os.environ.get("MIOPEN_FIND_MODE")},
               "model": model, "vae": vae, "default_cot": "full", "default_cfg": {"full": 1., "melody": 1., "off": 1.01},
               "validated": False, "note": "Environment readiness is not quality or real-24GB acceptance."}
     if args.verify_hashes:
@@ -197,6 +205,8 @@ def parser():
         q.add_argument("--backend", choices=("torch", "torch-eager", "vllm"), default="torch")
         q.add_argument("--quantization", choices=("none", "fp8"), default="none")
         q.add_argument("--offload-ar", action="store_true")
+        q.add_argument("--miopen-find-mode", choices=("FAST",),
+                       help="AMD MIOpen only: use FAST solver lookup; omitted preserves the process environment")
         q.add_argument("--offline", action="store_true")
         q.add_argument("--config")
         q.add_argument("--output")
@@ -226,6 +236,7 @@ def parser():
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parser().parse_args(argv)
+    apply_runtime_options(args)
     return {"doctor": doctor, "generate": generate, "batch": batch}[args.command](args)
 
 

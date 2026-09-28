@@ -1,8 +1,10 @@
 """Public installation resolves model IDs and exposes supported commands."""
 import json
+import os
 import pytest
 
 from yue2 import cli, pipeline
+from yue2.protocol import GenerationConfig, SongRequest
 
 
 @pytest.mark.parametrize("vae,repo", [
@@ -21,6 +23,51 @@ def test_cli_accepts_explicit_model_and_decoder(monkeypatch, tmp_path):
         "generate", "--model", "example/song-model", "--vae", "example/decoder",
     ])
     assert cli.model_paths(args) == ("example/song-model", "example/decoder")
+
+
+def test_miopen_find_mode_is_opt_in_and_preserves_inherited_value(monkeypatch):
+    monkeypatch.setenv("MIOPEN_FIND_MODE", "HYBRID")
+    args = cli.parser().parse_args(["generate"])
+
+    cli.apply_runtime_options(args)
+
+    assert args.miopen_find_mode is None
+    assert os.environ["MIOPEN_FIND_MODE"] == "HYBRID"
+
+
+def test_miopen_fast_is_applied_before_command_dispatch(monkeypatch):
+    monkeypatch.delenv("MIOPEN_FIND_MODE", raising=False)
+    observed = {}
+
+    def generate(args):
+        observed["mode"] = os.environ.get("MIOPEN_FIND_MODE")
+        return 0
+
+    monkeypatch.setattr(cli, "generate", generate)
+    assert cli.main(["generate", "--miopen-find-mode", "FAST"]) == 0
+    assert observed == {"mode": "FAST"}
+
+
+def test_cli_rejects_unsupported_miopen_find_modes():
+    with pytest.raises(SystemExit) as exc:
+        cli.parser().parse_args(["generate", "--miopen-find-mode", "NORMAL"])
+    assert exc.value.code == 2
+
+
+def test_effective_config_records_miopen_find_mode(monkeypatch, tmp_path):
+    monkeypatch.setenv("MIOPEN_FIND_MODE", "FAST")
+    (tmp_path / "config.json").write_text(json.dumps({"release_variant": "test"}))
+    pipe = object.__new__(pipeline.YuE2Pipeline)
+    pipe.generation_config = GenerationConfig()
+    pipe.backend, pipe.quantization = "torch", "none"
+    pipe.vae_core_frames, pipe.memory_budget_gib = 1024, 24.0
+    pipe.__dict__["device"] = "cpu"
+    pipe.offload_ar = False
+    pipe.runtime_sha256, pipe.vae_dir = "runtime", tmp_path
+
+    config = pipe.effective_config(SongRequest(style="style", lyrics="lyrics"))
+
+    assert config["runtime_environment"] == {"miopen_find_mode": "FAST"}
 
 
 @pytest.mark.parametrize("command", ["verify", "bench", "eval"])
