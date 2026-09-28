@@ -22,6 +22,7 @@ class Tokenizer:
 def bare_pipe(enabled=True, backend='torch-eager'):
     pipe = object.__new__(YuE2Pipeline)
     pipe.progress, pipe.backend = enabled, backend
+    pipe.rocm_profile = None
     pipe.tokenizer = Tokenizer()
     pipe.generation_config = GenerationConfig()
     pipe._load_model = lambda **kwargs: object()

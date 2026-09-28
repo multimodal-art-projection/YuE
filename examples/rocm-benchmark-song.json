@@ -1,0 +1,8 @@
+{
+  "id": "rocm-cue",
+  "style": "Modern upbeat synth-pop, bright synthesizer arpeggios, straight four-on-the-floor electronic drums, electric bass, clear expressive female lead vocal in English, 120 BPM. A concise verse and chorus, instrumental development, then a resolved outro. Clean contemporary studio production.\nComplete 60-second musical cue; resolve the arrangement at the end.",
+  "lyrics": "[Verse]\nOpen the window, welcome the day\nThe morning is calling, we're on our way\nFollow the rhythm, out of the gray\nThere's a little more light with every step we take\n\n[Chorus]\nHere comes the sunshine, over the street\nHere comes the moment, moving our feet\nOne little spark and a world to explore\nWe keep on finding a little bit more\n\n[Instrumental]\n\n[Outro]\nA little bit more",
+  "cot": "full",
+  "seed": 20260915,
+  "semantic_sampling": {"min_tokens": 1501, "max_tokens": 1551}
+}

@@ -44,6 +44,7 @@ import yue2.quantization
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="The optional vLLM backend uses Linux file locking")
 def test_derived_ar_subset_and_hash_validation(tmp_path):
     original, config = make_checkpoint(tmp_path / "full")
     derived = fast.derive_ar_checkpoint(tmp_path / "full", tmp_path / "cache")
@@ -57,6 +58,7 @@ def test_derived_ar_subset_and_hash_validation(tmp_path):
         fast.derive_ar_checkpoint(tmp_path / "full", tmp_path / "cache")
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="The optional vLLM backend uses Linux file locking")
 def test_missing_ar_tensor_fails(tmp_path):
     weights, _ = make_checkpoint(tmp_path / "full")
     del weights['lm_head.weight']
@@ -93,6 +95,7 @@ def test_cfg_and_device_fallback_preserve_protocol(monkeypatch, cfg, legacy, rea
     assert result[1]['backend_actual'] == 'torch' and result[1]['fallback_reason'] == reason
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="The optional vLLM worker uses POSIX pipes/process groups")
 def test_worker_transport_handles_many_buffered_lines(monkeypatch):
     original_popen = subprocess.Popen
     worker_code = """
