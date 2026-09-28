@@ -156,11 +156,11 @@ def batch(args):
         for index, row in enumerate(rows, 1):
             if not args.quiet:
                 print(f"Song {index}/{len(rows)}: {row['id']}", file=sys.stderr, flush=True)
-            kwargs = request_kwargs(row, path.parent)
-            if args.cot is not None:
-                kwargs["cot"] = args.cot
             directory = output / row["id"]
             try:
+                kwargs = request_kwargs(row, path.parent)
+                if args.cot is not None:
+                    kwargs["cot"] = args.cot
                 request = pipe._request(**{k:v for k,v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}})
                 cfg = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
                 expected = identity({"request": request.to_dict(), "config": cfg, "weights": pipe.weights})
