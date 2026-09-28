@@ -99,14 +99,30 @@ def attention(q, k, v, *, causal=False, backend="sdpa", query_chunk_size=None):
     return torch.cat(outputs, dim=-2)[0].transpose(0, 1)
 
 
+def _get_module_device(module):
+    p = next(module.parameters(), None)
+    if p is not None:
+        return p.device
+    b = next(module.buffers(), None)
+    if b is not None:
+        return b.device
+    return None
+
+
 class CachedNAR:
     """One original acoustic chunk; AR prefix KV is invariant during the ODE."""
 
-    def __init__(self, model, chunk: Chunk, attention="sdpa", query_chunk_size=None):
+    def __init__(self, model, chunk: Chunk, attention="sdpa", query_chunk_size=None, device=None):
         self.model, self.chunk = model, chunk
         self.backend, self.query_chunk_size = attention, query_chunk_size
-        weight = next(model.vae2llm.parameters())
-        self.device, self.dtype = weight.device, weight.dtype
+        if device is not None:
+            self.device = torch.device(device)
+            self.dtype = model.model.norm.weight.dtype
+        else:
+            weight = next(model.model.norm.parameters(), None)
+            if weight is None:
+                weight = next(model.parameters())
+            self.device, self.dtype = weight.device, weight.dtype
         if chunk.noise.ndim != 2 or chunk.noise.shape[1] != 64 or len(chunk.noise) < 1:
             raise ValueError("Expected nonempty acoustic noise [frames,64]")
         if not torch.isfinite(chunk.noise).all():
@@ -121,8 +137,7 @@ class CachedNAR:
         self.visible_length = min(chunk.nar_cond_end, self.ar_length) if chunk.nar_cond_end else self.ar_length
         positions = torch.arange(self.ar_length, self.ar_length + self.nar_length, device=self.device)[None]
         self.cos, self.sin = model.model.rotary_emb(positions)
-        local = torch.arange(self.nar_length, device=self.device).clamp(max=model.config.max_latent_frames - 1)
-        self.pos_emb = model.latent_pos_embed(local)[None]
+        self.pos_emb = None
         self.cache = []
         self._prefill()
 
@@ -153,6 +168,9 @@ class CachedNAR:
         model = self.model
         if tuple(state.shape) != tuple(self.chunk.noise.shape):
             raise ValueError("ODE state shape changed")
+        if self.pos_emb is None:
+            local = torch.arange(self.nar_length, device=self.device).clamp(max=model.config.max_latent_frames - 1)
+            self.pos_emb = model.latent_pos_embed(local)[None]
         x_nar = F.pad(state, (0, 0, 1, 1))
         shifted = model._shift_t_value(raw_t, self.device, self.dtype)
         x = model.vae2llm(x_nar[None])
@@ -212,8 +230,8 @@ def _offload_ar(model, enabled):
     try:
         if enabled:
             for module in modules:
-                device = next(module.parameters()).device
-                if device.type != "cpu":
+                device = _get_module_device(module)
+                if device is not None and device.type != "cpu":
                     module.to(device="cpu")
                     moved.append((module, device))
             if torch.cuda.is_available():
@@ -224,10 +242,60 @@ def _offload_ar(model, enabled):
             module.to(device=device)
 
 
+@contextmanager
+def _offload_nar(model, enabled):
+    """Temporarily move unused NAR modules to CPU during AR generation."""
+    modules = [model.llm2vae, model.vae2llm, model.time_embedder, model.latent_pos_embed]
+    for layer in model.model.layers:
+        modules.extend((layer.nar_input_layernorm, layer.nar_self_attn, layer.nar_pre_mlp_layernorm, layer.nar_mlp))
+    moved = []
+    try:
+        if enabled:
+            for module in modules:
+                device = _get_module_device(module)
+                if device is not None and device.type != "cpu":
+                    module.to(device="cpu")
+                    moved.append((module, device))
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        yield
+    finally:
+        for module, device in moved:
+            module.to(device=device)
+
+
+def _set_nar_device(model, device):
+    """Move all NAR-specific modules to the target device."""
+    target = torch.device(device)
+    modules = [model.llm2vae, model.vae2llm, model.time_embedder, model.latent_pos_embed]
+    for layer in model.model.layers:
+        modules.extend((layer.nar_input_layernorm, layer.nar_self_attn, layer.nar_pre_mlp_layernorm, layer.nar_mlp))
+    for module in modules:
+        curr_device = _get_module_device(module)
+        if curr_device is not None and curr_device != target:
+            module.to(device=target)
+    if torch.cuda.is_available() and target.type == "cpu":
+        torch.cuda.empty_cache()
+
+
+def _set_ar_device(model, device):
+    """Move all AR-specific modules to the target device."""
+    target = torch.device(device)
+    modules = [model.model.embed_tokens, model.lm_head]
+    for layer in model.model.layers:
+        modules.extend((layer.input_layernorm, layer.self_attn, layer.post_attention_layernorm, layer.mlp))
+    for module in modules:
+        curr_device = _get_module_device(module)
+        if curr_device is not None and curr_device != target:
+            module.to(device=target)
+    if torch.cuda.is_available() and target.type == "cpu":
+        torch.cuda.empty_cache()
+
+
 @torch.inference_mode()
 def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
                steps=32, context=CONTEXT, attention="sdpa", offload_ar=False,
-               cancelled=None, query_chunk_size=None,
+               offload_nar=False, device=None, cancelled=None, query_chunk_size=None,
                on_progress: Callable[[int, int], None] | None = None):
     """Return CPU FP32 [frames,64] latents, solving original chunks serially.
 
@@ -240,15 +308,22 @@ def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
     """
     if model.training:
         raise ValueError("synthesize requires model.eval()")
+    target_device = torch.device(device) if device is not None else model.model.norm.weight.device
+    use_offload = (offload_ar or offload_nar) and target_device.type == "cuda"
     chunks = song_chunks(prefix, codec, seed, context)
     output = []
     for chunk_index, chunk in enumerate(chunks):
         if cancelled is not None and cancelled():
             raise InterruptedError("Cancelled before acoustic prefill")
-        engine = CachedNAR(model, chunk, attention, query_chunk_size)
+        if use_offload:
+            _set_nar_device(model, "cpu")
+            _set_ar_device(model, target_device)
+        engine = CachedNAR(model, chunk, attention, query_chunk_size, device=target_device)
         # Drop the prefix cache before restoring AR weights, including on
         # cancellation/failure, to keep the restoration memory peak bounded.
         with _offload_ar(model, offload_ar):
+            if use_offload:
+                _set_nar_device(model, target_device)
             try:
                 progress = None
                 if on_progress is not None:
@@ -257,5 +332,7 @@ def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
                 output.append(engine.solve(steps, cancelled, on_progress=progress))
             finally:
                 engine.close()
+                if use_offload:
+                    _set_nar_device(model, "cpu")
         del engine
     return torch.cat(output, dim=0)

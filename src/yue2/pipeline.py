@@ -121,7 +121,8 @@ class SongResult:
 class YuE2Pipeline:
     def __init__(self, model_dir, vae_dir, *, device="auto", memory_budget_gib=24,
                  backend="torch", generation_config=None, verify_hashes=True,
-                 vae_core_frames=None, quantization="none", offload_ar=False, progress=True):
+                 vae_core_frames=None, quantization="none", offload_ar=False,
+                 offload_nar=True, progress=True):
         if not isinstance(progress, bool):
             raise TypeError("progress must be True or False")
         self.progress = progress
@@ -146,7 +147,8 @@ class YuE2Pipeline:
         self.backend, self.quantization = backend, quantization
         self.memory_budget_gib = float(memory_budget_gib)
         self.vae_core_frames = vae_core_frames if vae_core_frames is not None else (512 if memory_budget_gib <= 12 else 1024)
-        self.offload_ar = offload_ar
+        self.offload_nar = offload_nar
+        self.offload_ar = offload_ar or offload_nar
         self.generation_config = generation_config or GenerationConfig()
         self.tokenizer = YuE2TextTokenizer(self.model_dir / "qwen.tiktoken")
         with self._status("Verifying model files"):
@@ -159,10 +161,11 @@ class YuE2Pipeline:
             if not torch.cuda.is_bf16_supported():
                 raise RuntimeError("The unquantized preset requires CUDA BF16 support")
             total = torch.cuda.get_device_properties(self.device).total_memory
-            budget = min((self.memory_budget_gib - 2) * 2**30, total - 2 * 2**30)
+            reserve = (0.25 * 2**30) if total <= 8 * 2**30 else (2.0 * 2**30)
+            budget = min(self.memory_budget_gib * 2**30, total - reserve)
             if budget <= 0:
-                raise ValueError("Memory budget must leave room for a 2GiB reserve")
-            torch.cuda.set_per_process_memory_fraction(min(budget / total, 1), self.device)
+                raise ValueError(f"Memory budget must leave room for a {reserve / 2**30:.2f}GiB reserve")
+            torch.cuda.set_per_process_memory_fraction(min(budget / total, 1.0), self.device)
 
     @classmethod
     def from_pretrained(cls, model="m-a-p/YuE2-3B", *, vae="m-a-p/YuE2-Vae",
@@ -207,8 +210,8 @@ class YuE2Pipeline:
         write_json(directory / "pipeline.json", {"model": "YuE2-3B", "vae": "YuE2-Vae",
                    "generation_config": self.generation_config.to_dict(), "source_weights": self.weights})
 
-    def _load_model(self, for_nar=False):
-        loading = self._model is None or next(self._model.parameters()).device != self.device
+    def _load_model(self):
+        loading = self._model is None
         with self._status("Loading model") if loading else nullcontext():
             if self._model is None:
                 from .modeling_yue2 import YuE2ForCausalLM
@@ -216,10 +219,17 @@ class YuE2Pipeline:
                 self._model = YuE2ForCausalLM.from_pretrained(self.model_dir, local_files_only=True,
                               torch_dtype=torch.bfloat16, low_cpu_mem_usage=True).eval()
                 self.load_timing["mot_load_seconds"] = time.perf_counter() - start
-            if self.quantization == "fp8" and not for_nar:
+            if self.quantization == "fp8":
                 from .quantization import prepare_fp8_ar
                 prepare_fp8_ar(self._model, self.device)
-            self._model.to(self.device)
+            if getattr(self, "offload_nar", False) and self.device.type == "cuda":
+                from .nar import _set_ar_device, _set_nar_device
+                self._model.model.norm.to(self.device)
+                self._model.model.rotary_emb.to(self.device)
+                _set_nar_device(self._model, "cpu")
+                _set_ar_device(self._model, self.device)
+            else:
+                self._model.to(self.device)
         return self._model
 
     def _request(self, style=None, lyrics=None, *, tags=None, **kwargs):
@@ -294,13 +304,18 @@ class YuE2Pipeline:
         if self.quantization != "none":
             from .quantization import restore_ar
             restore_ar(self._model)
-        model = self._load_model(for_nar=True)
+        model = self._load_model()
         with self._status("Synthesizing audio", unit="steps") as status:
             report = (lambda completed, total: status.update(completed, total=total)) if self.progress else None
+            extra_kwargs = {}
+            if getattr(self, "offload_nar", False):
+                extra_kwargs["offload_nar"] = True
+                extra_kwargs["device"] = getattr(self, "device", None)
             result = synthesize(model, semantic.plan.prefix, semantic.tokens,
                                 semantic.plan.request.seed, steps=self.generation_config.ode_steps,
-                                context=self.generation_config.context, offload_ar=self.offload_ar,
-                                cancelled=cancelled, on_progress=report)
+                                context=self.generation_config.context,
+                                offload_ar=getattr(self, "offload_ar", False),
+                                cancelled=cancelled, on_progress=report, **extra_kwargs)
             return result.detach().float().cpu().numpy()
 
     def close(self):
@@ -371,7 +386,8 @@ class YuE2Pipeline:
                 "model_dtype": "bfloat16", "vae_dtype": "float32", "vae_decode": "halo_crop",
                 "vae_core_frames": self.vae_core_frames, "vae_halo_frames": 16,
                 "device": str(self.device), "memory_budget_gib": self.memory_budget_gib,
-                "offload_ar": self.offload_ar, "runtime_sha256": self.runtime_sha256,
+                "offload_ar": self.offload_ar, "offload_nar": self.offload_nar,
+                "runtime_sha256": self.runtime_sha256,
                 "decoder_release": json.loads((self.vae_dir / "config.json").read_text()).get("release_variant"),
                 "validation_status": "unvalidated"}
 
