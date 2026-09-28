@@ -122,10 +122,30 @@ def model_identity(path, verify=True):
     return {"files": entries, "config_sha256": sha256_file(path / "config.json")}
 
 
-def collect_hashes(directory, exclude=("result.json",)):
+def collect_hashes(directory, exclude=("result.json", "run_state.json", "semantic_meta.json", "synthesis_meta.json")):
+    # run_state.json/*_meta.json are internal resume bookkeeping, not part of the verified
+    # result: run_state.json is itself rewritten (to "complete") right after this manifest is
+    # computed, so freezing its hash into result.json would make every finished run look
+    # corrupt on its very next --resume check.
     directory = Path(directory)
     return {str(p.relative_to(directory)): {"sha256": sha256_file(p), "bytes": p.stat().st_size}
             for p in sorted(directory.rglob("*")) if p.is_file() and p.name not in exclude}
+
+
+def verify_files(directory, hashes):
+    """Check whether every named file under directory still matches its recorded size/sha256.
+
+    Returns False (rather than raising) on a missing or corrupt file so callers can treat an
+    untrustworthy stage as simply not-yet-done instead of a hard error.
+    """
+    directory = Path(directory)
+    for name, expected in hashes.items():
+        p = directory / name
+        if Path(name).is_absolute() or not p.resolve().is_relative_to(directory.resolve()):
+            raise ValueError("Invalid artifact path")
+        if not p.is_file() or p.stat().st_size != expected["bytes"] or sha256_file(p) != expected["sha256"]:
+            return False
+    return True
 
 
 def verify_result(directory, expected_identity=None):

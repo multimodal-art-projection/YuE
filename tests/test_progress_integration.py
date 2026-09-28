@@ -1,6 +1,5 @@
 """CPU contract checks for progress integration, without loading song weights."""
 import json
-from types import SimpleNamespace
 
 import pytest
 import torch
@@ -8,7 +7,7 @@ import torch
 from yue2 import cli, fast, nar, pipeline
 from yue2.pipeline import YuE2Pipeline
 from yue2.progress import Progress
-from yue2.protocol import ABC_END, CODEC_OFFSET, MUSIC_END, GenerationConfig, SongRequest
+from yue2.protocol import ABC_END, CODEC_OFFSET, MUSIC_END, GenerationConfig
 
 
 class Tokenizer:
@@ -174,17 +173,12 @@ def test_cli_quiet_propagates_and_does_not_pollute_result_stdout(command, quiet_
         weights = {}
         closed = False
 
-        def _request(self, **kwargs):
-            return SongRequest(**kwargs)
-
-        def effective_config(self, *args):
-            return {}
-
-        def __call__(self, **kwargs):
+        def generate_resumable(self, directory, resume=False, **kwargs):
             with Progress(enabled=self.progress).stage('Generating song', unit='tokens') as stage:
                 stage.advance()
-            return SimpleNamespace(truncated={'abc': False, 'semantic': False}, timing={'e2e_seconds': 1.0},
-                                   save_artifacts=lambda directory: {'identity': 'saved'})
+            return {'resumed': False,
+                    'result': {'identity': 'saved', 'truncated': {'abc': False, 'semantic': False},
+                              'timing': {'e2e_seconds': 1.0}}}
 
         def close(self):
             self.closed = True
