@@ -17,18 +17,42 @@ from transformers.cache_utils import DynamicCache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
+def _mps_broadcast_gqa(query, key, value, *, attn_mask=None, is_causal=False):
+    """Grouped-query attention without duplicating the growing K/V sequence.
+
+    Each KV head becomes a batch item and is broadcast across its query-head
+    group, so the K/V operands keep their true ``[B, kv_heads, S, D]`` shape.
+    """
+    batch, query_heads, query_length, head_dim = query.shape
+    kv_heads = key.shape[1]
+    groups = query_heads // kv_heads
+    q = query.reshape(batch, kv_heads, groups, query_length, head_dim)
+    k = key.unsqueeze(2)
+    v = value.unsqueeze(2)
+    if attn_mask is not None and attn_mask.ndim == 4:
+        attn_mask = attn_mask.unsqueeze(2)
+    output = F.scaled_dot_product_attention(
+        q, k, v, attn_mask=attn_mask, is_causal=is_causal, enable_gqa=False,
+    )
+    return output.reshape(batch, query_heads, query_length, head_dim)
+
+
 def sdpa(query, key, value, *, attn_mask=None, is_causal=False):
     """Use native grouped-query attention, including a portable MPS fallback."""
     grouped = query.shape[1] != key.shape[1]
-    if grouped and query.device.type == "mps":
-        # PyTorch's MPS attention does not implement enable_gqa on every release.
-        groups = query.shape[1] // key.shape[1]
-        key = key.repeat_interleave(groups, dim=1)
-        value = value.repeat_interleave(groups, dim=1)
-        grouped = False
+    if not grouped:
+        return F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attn_mask, is_causal=is_causal,
+        )
+    if query.device.type == "mps":
+        # ``enable_gqa`` is not portable across MPS releases, and letting SDPA
+        # broadcast a mismatched head count aborts the whole process inside
+        # MPSGraph instead of raising. Broadcast per KV head ourselves.
+        return _mps_broadcast_gqa(
+            query, key, value, attn_mask=attn_mask, is_causal=is_causal,
+        )
     return F.scaled_dot_product_attention(
-        query, key, value, attn_mask=attn_mask, is_causal=is_causal,
-        enable_gqa=grouped,
+        query, key, value, attn_mask=attn_mask, is_causal=is_causal, enable_gqa=True,
     )
 
 
@@ -204,7 +228,20 @@ class Attention(nn.Module):
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
 
         if past_key_value is not None:
-            k, v = past_key_value.update(k, v, layer_idx, {"cache_position": cache_position})
+            cache_kwargs = {"cache_position": cache_position}
+            if isinstance(past_key_value, StaticKVCache):
+                # Only an unpadded decode may return a bucketed, fixed-shape
+                # prefix; a caller-supplied mask is aligned to the written slots.
+                cache_kwargs["fixed_shape"] = attention_mask is None
+            k, v = past_key_value.update(k, v, layer_idx, cache_kwargs)
+            if (T == 1 and attention_mask is None and cache_position is not None
+                    and k.shape[2] > int(cache_position[-1]) + 1):
+                # Fixed-shape decode returned a bucket with unfilled slots. Hide
+                # them without slicing K/V to a new shape at every token.
+                attention_mask = (
+                    torch.arange(k.shape[2], device=x.device)[None, None, None, :]
+                    <= cache_position[-1]
+                )
 
         if attention_mask is not None:
             out = sdpa(q, k, v, attn_mask=attention_mask[..., :k.shape[2]])
@@ -377,8 +414,23 @@ class StaticKVCache:
             for _ in range(num_layers)
         ]
 
+    #: MPS decode returns power-of-two prefixes so Metal reuses a handful of
+    #: shape-specialized graphs instead of compiling one per generated token.
+    MPS_DECODE_BUCKET = 2048
+
     def get_seq_length(self, layer_idx=0) -> int:
         return self._seen_tokens
+
+    def _bucket_decode(self, key_states) -> bool:
+        """Whether this step should return a fixed-shape bucketed prefix."""
+        return key_states.device.type == "mps"
+
+    def _mps_decode_length(self, used: int) -> int:
+        """Return one of a few stable Metal graph shapes, capped by capacity."""
+        bucket = self.MPS_DECODE_BUCKET
+        while bucket < used and bucket < self.max_seq_len:
+            bucket *= 2
+        return min(bucket, self.max_seq_len)
 
     def update(self, key_states, value_states, layer_idx, cache_kwargs=None):
         T = key_states.shape[2]
@@ -390,6 +442,14 @@ class StaticKVCache:
         self.value_cache[layer_idx][:, :, pos:end] = value_states
         if layer_idx == self.num_layers - 1:
             self._seen_tokens = end
+        # MPS compiles/caches shape-specialized matmul/attention graphs. Returning
+        # a growing prefix creates one driver allocation set per token. Decode
+        # uses power-of-two buckets, limiting a request to a handful of reusable
+        # graph shapes without paying full-capacity attention at early tokens.
+        fixed_shape = True if cache_kwargs is None else cache_kwargs.get("fixed_shape", True)
+        if T == 1 and fixed_shape and self._bucket_decode(key_states):
+            length = self._mps_decode_length(end)
+            return self.key_cache[layer_idx][:, :, :length], self.value_cache[layer_idx][:, :, :length]
         return self.key_cache[layer_idx][:, :, :end], self.value_cache[layer_idx][:, :, :end]
 
     def reset(self):
