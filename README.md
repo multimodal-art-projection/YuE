@@ -16,7 +16,8 @@
 <p align="center"><strong>Compose in symbols. Create in sound.</strong></p>
 
 <p align="center">
-  <a href="https://arxiv.org/abs/2609.33757">📄 Technical report</a> ·
+  <a href="https://arxiv.org/abs/2609.33757">📄 arXiv</a> ·
+  <a href="docs/technical_report.pdf">PDF</a> ·
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
   <a href="https://yue.noizai.net/">🚀 Try online (free)</a> ·
   <a href="https://arena.3-148-255-99.sslip.io:8080">🗳️ Music Arena</a> ·
