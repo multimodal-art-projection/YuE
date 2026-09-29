@@ -25,7 +25,8 @@ def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
+    temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
+                         encoding="utf-8")
     os.replace(temporary, path)
 
 
@@ -59,7 +60,7 @@ def copy_model_files(source, destination):
     source, destination = Path(source).resolve(), Path(destination)
     if destination.exists() and any(destination.iterdir()):
         raise FileExistsError("save_pretrained needs an empty model destination")
-    config = json.loads((source / "config.json").read_text())
+    config = json.loads((source / "config.json").read_text(encoding="utf-8"))
     kind = config.get("model_type")
     if kind == "yue2":
         from .modeling_yue2 import YuE2Config
@@ -82,11 +83,11 @@ def copy_model_files(source, destination):
         if file.is_file():
             if name == "yue2_generation_config.json":
                 from .protocol import GenerationConfig
-                write_json(destination / name, GenerationConfig.from_dict(json.loads(file.read_text())).to_dict())
+                write_json(destination / name, GenerationConfig.from_dict(json.loads(file.read_text(encoding="utf-8"))).to_dict())
             elif name == "generation_config.json":
                 from transformers import GenerationConfig as HFGenerationConfig
                 known = HFGenerationConfig().to_dict()
-                value = {key: value for key, value in json.loads(file.read_text()).items()
+                value = {key: value for key, value in json.loads(file.read_text(encoding="utf-8")).items()
                          if key in known and not key.startswith("_")}
                 write_json(destination / name, value)
             else:
@@ -105,7 +106,7 @@ def copy_model_files(source, destination):
 def model_identity(path, verify=True):
     path = Path(path)
     manifest = path / "weights_manifest.json"
-    expected = json.loads(manifest.read_text()) if manifest.exists() else None
+    expected = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else None
     files = sorted(path.glob("*.safetensors"))
     if not files:
         raise FileNotFoundError(f"No safetensors weights in {path}")
@@ -130,7 +131,7 @@ def collect_hashes(directory, exclude=("result.json",)):
 
 def verify_result(directory, expected_identity=None):
     directory = Path(directory)
-    result = json.loads((directory / "result.json").read_text())
+    result = json.loads((directory / "result.json").read_text(encoding="utf-8"))
     if result.get("status") != "complete":
         raise ValueError("Saved request did not complete")
     if expected_identity is not None and result.get("identity") != expected_identity:

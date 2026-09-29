@@ -439,7 +439,7 @@ class YuE2VAE(PreTrainedModel):
         model = cls(config, decoder_only=decoder_only)
         index = path / "model.safetensors.index.json"
         if index.exists():
-            mapping = json.loads(index.read_text())["weight_map"]
+            mapping = json.loads(index.read_text(encoding="utf-8"))["weight_map"]
             files = sorted({name for key, name in mapping.items()
                             if not decoder_only or key.startswith("decoder.")})
         else:

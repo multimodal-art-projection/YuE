@@ -44,7 +44,7 @@ class SymbolicPlan:
     def load(cls, directory):
         """Restore exact planner output without decoding and retokenizing its ABC."""
         directory = Path(directory)
-        hashes = json.loads((directory / "plan_manifest.json").read_text())
+        hashes = json.loads((directory / "plan_manifest.json").read_text(encoding="utf-8"))
         if not {"plan.json", "abc_tokens.npy", "prefix.npy"} <= hashes.keys():
             raise ValueError("Incomplete saved plan")
         for name, digest in hashes.items():
@@ -52,7 +52,7 @@ class SymbolicPlan:
                 raise ValueError("Invalid plan artifact")
             if sha256_file(directory / name) != digest:
                 raise ValueError("Saved plan changed; supply modified ABC as an external planner input")
-        data = json.loads((directory / "plan.json").read_text())
+        data = json.loads((directory / "plan.json").read_text(encoding="utf-8"))
         for field, filename in (("abc_ids", "abc_tokens.npy"), ("prefix", "prefix.npy")):
             array = np.load(directory / filename, allow_pickle=False)
             if array.ndim != 1 or array.dtype.kind not in "iu" or array.tolist() != data[field]:
@@ -174,7 +174,7 @@ class YuE2Pipeline:
         start = time.perf_counter()
         saved = Path(model) / "pipeline.json"
         if saved.is_file():
-            metadata = json.loads(saved.read_text())
+            metadata = json.loads(saved.read_text(encoding="utf-8"))
             parent = Path(model)
             model = parent / metadata["model"]
             if vae == "m-a-p/YuE2-Vae":
@@ -372,7 +372,7 @@ class YuE2Pipeline:
                 "vae_core_frames": self.vae_core_frames, "vae_halo_frames": 16,
                 "device": str(self.device), "memory_budget_gib": self.memory_budget_gib,
                 "offload_ar": self.offload_ar, "runtime_sha256": self.runtime_sha256,
-                "decoder_release": json.loads((self.vae_dir / "config.json").read_text()).get("release_variant"),
+                "decoder_release": json.loads((self.vae_dir / "config.json").read_text(encoding="utf-8")).get("release_variant"),
                 "validation_status": "unvalidated"}
 
     def __call__(self, style=None, lyrics=None, *, tags=None, abc_sampling=None,
