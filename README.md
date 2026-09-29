@@ -16,7 +16,7 @@
 <p align="center"><strong>Compose in symbols. Create in sound.</strong></p>
 
 <p align="center">
-  <a href="docs/technical_report.pdf">📄 Technical report</a> ·
+  <a href="https://arxiv.org/abs/2609.33757">📄 Technical report</a> ·
   <a href="https://map-yue2.github.io/">🎧 Demos</a> ·
   <a href="https://yue.noizai.net/">🚀 Try online (free)</a> ·
   <a href="https://arena.3-148-255-99.sslip.io:8080">🗳️ Music Arena</a> ·
@@ -71,7 +71,9 @@
 
 ## News
 
-- **📄 September 26, 2026 — YuE2 technical report.** Our [technical report](docs/technical_report.pdf) is now available, with the full model and training methods, automatic and expert listening results, and evaluations of score editing and zero-shot covers.
+- **📄 September 29, 2026 — YuE2 on arXiv.** Read the [paper](https://arxiv.org/abs/2609.33757) and use the [BibTeX citation](#citation).
+
+- **📄 September 26, 2026 — YuE2 technical report.** Our [technical report](https://arxiv.org/abs/2609.33757) is now available, with the full model and training methods, automatic and expert listening results, and evaluations of score editing and zero-shot covers.
 - **🎹 September 25, 2026 — Instrumental generation and covers.** The [yue2-music agent skill](#agent-skill) now turns a simple description, ABC score, or reference recording into instrumental music. YuE2 writes the score by default; the skill moves the vocal melody into the instrumental part before rendering. **Recommended agent: GPT-6 Astra.** [Download the updated skill →](https://github.com/multimodal-art-projection/YuE/releases/download/yue2-music-v1.2.0/yue2-music.zip)
 - **🚀 Try YuE2 online for free.** Create a song in your browser with the [NOIZ-hosted demo →](https://yue.noizai.net/). No installation required.
 - **⚡ YuE2-Turbo.** [NOIZ's inference and serving toolkit →](https://github.com/NoizAI/YuE2-Turbo) accelerates YuE2 and supports concurrent requests.
@@ -249,7 +251,7 @@ To reproduce the reported benchmark scores, follow the instructions on [🤗 Wil
 
 | Resource | Purpose |
 |---|---|
-| [📄 Technical report](docs/technical_report.pdf) | Model, training, and evaluation details |
+| [📄 Technical report](https://arxiv.org/abs/2609.33757) | Model, training, and evaluation details |
 | [🤗 YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) | Song generation, symbolic planning, covering, and editing |
 | [🤗 YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae) | Default generation and listening decoder |
 | [🤗 YuE2-Vae-legacy](https://huggingface.co/m-a-p/YuE2-Vae-legacy) | Decoder for the reported benchmark protocol |
@@ -278,7 +280,22 @@ We strongly encourage crediting **YuE2** or using **#YuE2** when sharing generat
 
 ## Citation
 
-The [YuE2 technical report](docs/technical_report.pdf) is now available. For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https://arxiv.org/abs/2503.08638)** models, please cite:
+Please cite the [YuE2 paper](https://arxiv.org/abs/2609.33757) when using YuE2, MERT2, SheetSage2, or WildSongBench:
+
+```bibtex
+@article{yuan2026yue2,
+  title = {{YuE2}: Unifying Symbolic and Audio Music Generation at Frontier Quality},
+  author = {Yuan, Ruibin and Pan, Jiahao and Jiang, Junyan and Wu, Zhiyue and Zhou, Ziya and Sun, Jiankai and Li, Yizhi and Zhang, Ge and Gu, Yicheng and Tian, Zeyue and Dai, Junyu and Lin, Hanfeng and Li, Kai and Wu, Shangda and Liu, Xuanjie and Wang, Jiaming and Liu, Zihan and Wang, Yue and Ma, Yinghao and Yin, Hanzhi and Chen, Kangrui and Zhang, Xinyue and Ma, Ziyang and Liao, Mengqi and Zhao, Hejia and Huang, Guowei and Yan, Chao and Ke, Lei and Yu, Jianwei and Liu, Bei and Guo, Joe and Xue, Liumeng and Xia, Gus and Xue, Wei and Guo, Yike},
+  journal = {arXiv preprint arXiv:2609.33757},
+  year = {2026},
+  eprint = {2609.33757},
+  archivePrefix = {arXiv},
+  primaryClass = {eess.AS},
+  url = {https://arxiv.org/abs/2609.33757}
+}
+```
+
+For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https://arxiv.org/abs/2503.08638)** models, please cite:
 
 ```bibtex
 @article{li2023mert,
