@@ -11,6 +11,18 @@ import torch
 import torch.nn.functional as F
 
 
+def _flash_attention_available(model):
+    """Check the op is compiled in: Windows wheels register it as a stub that raises."""
+    config = model.config
+    q = torch.zeros(1, config.num_attention_heads, 1, config.head_dim,
+                    device=model.device, dtype=model.dtype)
+    kv = torch.zeros(1, config.num_key_value_heads, 1, config.head_dim,
+                     device=model.device, dtype=model.dtype)
+    params = torch._C._SDPAParams(q, kv, kv, None, 0.0, False,
+                                  config.num_attention_heads != config.num_key_value_heads)
+    return torch.backends.cuda.can_use_flash_attention(params)
+
+
 class _PrefixCache:
     """A single branch view used only by the original eager HF prefill."""
     def __init__(self, keys, values, branch):
@@ -77,6 +89,8 @@ class GraphAR:
         # Torch 2.10 is pinned by the package. Its native variable-length FA
         # accepts GPU effective lengths; the public masked SDPA can select a
         # much slower math kernel. Keep a cuDNN/public-SDPA fallback explicit.
+        if flash:
+            flash = _flash_attention_available(model)
         if attention_backend == "auto":
             attention_backend = "flash" if flash else "cudnn" if fused and torch.backends.cudnn.is_available() else "sdpa"
         if attention_backend == "flash" and not flash:
