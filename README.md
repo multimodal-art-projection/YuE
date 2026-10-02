@@ -284,7 +284,7 @@ We strongly encourage crediting **YuE2** or using **#YuE2** when sharing generat
 
 ## Citation
 
-Please cite the [YuE2 paper](https://arxiv.org/abs/2609.33757) when using YuE2, MERT2, SheetSage2, or WildSongBench:
+Please cite the [YuE2 paper](https://arxiv.org/abs/2609.33757) when using YuE2, MERT2, or WildSongBench:
 
 ```bibtex
 @article{yuan2026yue2,
