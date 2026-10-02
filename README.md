@@ -72,6 +72,8 @@
 
 ## News
 
+- **📄 October 2, 2026 — SheetSage2 technical report.** The [SheetSage2 report](docs/sheetsage2_technical_report.pdf) describes the transcription model used for covers and score editing: MIDI-derived synthetic supervision, structured decoding, and autoregressive distillation, with evaluations on eight benchmark collections.
+
 - **📄 September 29, 2026 — YuE2 on arXiv.** Read the [paper](https://arxiv.org/abs/2609.33757) and use the [BibTeX citation](#citation).
 
 - **📄 September 26, 2026 — YuE2 technical report.** Our [technical report](https://arxiv.org/abs/2609.33757) is now available, with the full model and training methods, automatic and expert listening results, and evaluations of score editing and zero-shot covers.
@@ -246,13 +248,14 @@ To reproduce the reported benchmark scores, follow the instructions on [🤗 Wil
 
 **State-of-the-art audio-to-score transcription:** SheetSage2-AR leads on **12 of 15 benchmark metrics** in the reported comparison, including JAAH chord recognition and Rock Corpus vocal melody transcription. Vocal melody pitch-class F1 is **82.51% on RWC-Pop** and **67.08% on Rock Corpus**.
 
-[Demo and results](https://map-yue2.github.io/#sheetsage2) · [🤗 Model and inference](https://huggingface.co/m-a-p/SheetSage2)
+[📄 Technical report](docs/sheetsage2_technical_report.pdf) · [Demo and results](https://map-yue2.github.io/#sheetsage2) · [🤗 Model and inference](https://huggingface.co/m-a-p/SheetSage2)
 
 ## Models and resources
 
 | Resource | Purpose |
 |---|---|
-| [📄 Technical report](https://arxiv.org/abs/2609.33757) | Model, training, and evaluation details |
+| [📄 YuE2 technical report](https://arxiv.org/abs/2609.33757) | Model, training, and evaluation details |
+| [📄 SheetSage2 technical report](docs/sheetsage2_technical_report.pdf) | Transcription method, training, and evaluation details |
 | [🤗 YuE2-3B](https://huggingface.co/m-a-p/YuE2-3B) | Song generation, symbolic planning, covering, and editing |
 | [🤗 YuE2-Vae](https://huggingface.co/m-a-p/YuE2-Vae) | Default generation and listening decoder |
 | [🤗 YuE2-Vae-legacy](https://huggingface.co/m-a-p/YuE2-Vae-legacy) | Decoder for the reported benchmark protocol |
@@ -293,6 +296,18 @@ Please cite the [YuE2 paper](https://arxiv.org/abs/2609.33757) when using YuE2, 
   archivePrefix = {arXiv},
   primaryClass = {eess.AS},
   url = {https://arxiv.org/abs/2609.33757}
+}
+```
+
+When using SheetSage2, please cite the [SheetSage2 technical report](docs/sheetsage2_technical_report.pdf):
+
+```bibtex
+@misc{jiang2026sheetsage2,
+  title = {{SheetSage2}: Coherent Lead-Sheet Transcription with Synthetic Supervision},
+  author = {Jiang, Junyan and Yuan, Ruibin and Pan, Jiahao and Xue, Wei and Xia, Gus and LeCun, Yann},
+  year = {2026},
+  howpublished = {Technical report},
+  url = {https://github.com/multimodal-art-projection/YuE/blob/main/docs/sheetsage2_technical_report.pdf}
 }
 ```
 
