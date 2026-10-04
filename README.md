@@ -356,7 +356,7 @@ For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https:
         <a href="assets/wechat-yue2-group.png">
           <img src="assets/wechat-yue2-group.png" alt="YuE2 WeChat group QR code" width="240" />
         </a><br>
-        <sub>Click to enlarge<br>Valid until Oct 5, 2026</sub>
+        <sub>Click to enlarge<br>Valid until Oct 11, 2026</sub>
       </details>
     </td>
   </tr>
