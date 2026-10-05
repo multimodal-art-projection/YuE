@@ -304,7 +304,7 @@ When using SheetSage2, please cite the [SheetSage2 technical report](docs/sheets
 ```bibtex
 @misc{jiang2026sheetsage2,
   title = {{SheetSage2}: Coherent Lead-Sheet Transcription with Synthetic Supervision},
-  author = {Jiang, Junyan and Yuan, Ruibin and Pan, Jiahao and Xue, Wei and Xia, Gus and LeCun, Yann},
+  author = {Jiang, Junyan and Yuan, Ruibin and Pan, Jiahao and Xue, Wei and Guo, Yike and Xia, Gus and LeCun, Yann},
   year = {2026},
   howpublished = {Technical report},
   url = {https://github.com/multimodal-art-projection/YuE/blob/main/docs/sheetsage2_technical_report.pdf}
