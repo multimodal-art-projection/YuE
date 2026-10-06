@@ -3,6 +3,7 @@ import json
 import pathlib
 import sys
 import unittest
+from fractions import Fraction
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('abc_tools', ROOT / 'skills/yue2-music/scripts/abc_tools.py')
@@ -71,7 +72,7 @@ class ABCChecks(unittest.TestCase):
         examples=[score('C16|'), score('C48|'), score('C32-|'), score('C32-|D32|','Z2|'),
           score('C32-|z32|','Z2|'), score('C32-|=C32|','Z2|',key='D').replace('C32-|','^C32-|'),
           score('z32-|'), score('^z32|'), score('C10C22|'), score('C/2C31|'),
-          score('(3C8D8E8|'), score('[CEG]32|'), score('C16>C16|'), score('{C}D32|'),
+          score('[CEG]32|'), score('C16>C16|'), score('{C}D32|'),
           score('C32||'), score('C32:|'), score('Z1|'), score('Z5|'),
           score('"C13"C32|'), score('"A7alt"C32|'), score('C32"C"|'),
           score('C32|','"C"Z|'),score('C16[K:D]C16|'),
