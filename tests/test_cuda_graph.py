@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 import torch
 
-from yue2.cuda_graph import GraphAR
+from yue2.cuda_graph import GraphAR, _flash_attention_available
 from yue2.modeling_yue2 import StaticKVCache, YuE2Config, YuE2ForCausalLM
 
 
@@ -115,6 +115,17 @@ def test_quantized_model_requires_explicit_eager_path(model):
         GraphAR(model, [[1]], 2, capture=False)
 
 
+def test_explicit_flash_backend_is_rejected_without_a_cuda_model(model):
+    with pytest.raises(ValueError, match="unavailable"):
+        GraphAR(model, [[1]], 2, capture=False, attention_backend="flash")
+
+
+def test_flash_availability_consults_the_sdpa_metadata_check(model):
+    assert _flash_attention_available(model) is False
+    with patch.object(torch.backends.cuda, "can_use_flash_attention", return_value=True):
+        assert _flash_attention_available(model) is True
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA capture requires an actual allocated GPU")
 @pytest.mark.parametrize("prefixes", [[[2, 3, 4]], [[2, 3, 4, 5], [6]]])
 @pytest.mark.parametrize("backend", ["auto", "cudnn"])
@@ -131,7 +142,11 @@ def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused):
         graph = GraphAR(model, prefixes, 5, attention_backend=backend, fuse_projections=fused)
         torch.testing.assert_close(graph.prefill(), expected, atol=0, rtol=0)
         assert graph.graph is not None
-        assert graph.attention_backend == ("flash" if backend == "auto" else "cudnn")
+        if backend == "auto":
+            expected_backend = "flash" if _flash_attention_available(model) else "cudnn"
+        else:
+            expected_backend = backend
+        assert graph.attention_backend == expected_backend
         for keys, values in zip(graph.keys, graph.values):
             for branch, prefix in enumerate(prefixes):
                 keys[branch, len(prefix)+1:].fill_(1000)
