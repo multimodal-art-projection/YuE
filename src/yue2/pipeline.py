@@ -282,7 +282,8 @@ class YuE2Pipeline:
                         cancelled=cancelled, on_token=on_token)
         return SemanticResult(plan, [int(t) - CODEC_OFFSET for t in ids], timing, truncated)
 
-    def synthesize(self, semantic, *, cancelled=None):
+    def synthesize(self, semantic, *, cancelled=None, on_progress=None):
+        """Synthesize latents; ``on_progress(completed, total)`` reports ODE steps."""
         from .nar import synthesize
         if self.backend == "vllm":
             from .fast import close_vllm
@@ -296,11 +297,16 @@ class YuE2Pipeline:
             restore_ar(self._model)
         model = self._load_model(for_nar=True)
         with self._status("Synthesizing audio", unit="steps") as status:
-            report = (lambda completed, total: status.update(completed, total=total)) if self.progress else None
+            def report(completed, total):
+                if self.progress:
+                    status.update(completed, total=total)
+                if on_progress is not None:
+                    on_progress(completed, total)
             result = synthesize(model, semantic.plan.prefix, semantic.tokens,
                                 semantic.plan.request.seed, steps=self.generation_config.ode_steps,
                                 context=self.generation_config.context, offload_ar=self.offload_ar,
-                                cancelled=cancelled, on_progress=report)
+                                cancelled=cancelled,
+                                on_progress=report if (self.progress or on_progress is not None) else None)
             return result.detach().float().cpu().numpy()
 
     def close(self):
@@ -317,7 +323,8 @@ class YuE2Pipeline:
     def __exit__(self, *exc):
         self.close()
 
-    def decode(self, latents, *, full=False, vae=None):
+    def decode(self, latents, *, full=False, vae=None, on_progress=None):
+        """Decode latents; ``on_progress(completed, total)`` reports VAE chunks."""
         from .modeling_vae import YuE2VAE
         with self._status("Loading audio decoder"):
             if self._model is not None:
@@ -339,14 +346,21 @@ class YuE2Pipeline:
         try:
             tiles = 1 if full else (z.shape[-1] + self.vae_core_frames - 1) // self.vae_core_frames
             with self._status("Decoding audio", total=tiles, unit="chunks") as status:
-                report = (lambda completed, total: status.update(completed, total=total)) if self.progress else None
+                def report(completed, total):
+                    if self.progress:
+                        status.update(completed, total=total)
+                    if on_progress is not None:
+                        on_progress(completed, total)
                 with torch.inference_mode():
                     if full:
                         audio = model.decode(z.to(self.device)).cpu()
                         status.update(1)
+                        if on_progress is not None:
+                            on_progress(1, 1)
                     else:
                         audio = model.decode_tiled(z, core_frames=self.vae_core_frames, halo_frames=16,
-                                                   output_device="cpu", on_progress=report)
+                                                   output_device="cpu",
+                                                   on_progress=report if (self.progress or on_progress is not None) else None)
                 if not torch.isfinite(audio).all():
                     raise ValueError("VAE produced non-finite audio")
                 return audio[0].float().clamp(-1, 1).T.contiguous().numpy()
@@ -376,7 +390,7 @@ class YuE2Pipeline:
                 "validation_status": "unvalidated"}
 
     def __call__(self, style=None, lyrics=None, *, tags=None, abc_sampling=None,
-                 semantic_sampling=None, cancelled=None, on_token=None, **kwargs):
+                 semantic_sampling=None, cancelled=None, on_token=None, on_progress=None, **kwargs):
         request = self._request(style, lyrics, tags=tags, **kwargs)
         config = self.effective_config(request, abc_sampling, semantic_sampling)
         request_id = identity({"request": request.to_dict(), "config": config, "weights": self.weights})
@@ -384,12 +398,16 @@ class YuE2Pipeline:
         plan = self.plan(request=request, abc_sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
         semantic = self.generate_semantic(plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token)
         nar_start = time.perf_counter()
-        latents = self.synthesize(semantic, cancelled=cancelled)
+        latents = self.synthesize(
+            semantic, cancelled=cancelled,
+            on_progress=((lambda done, total: on_progress("nar", done, total)) if on_progress is not None else None))
         nar_seconds = time.perf_counter() - nar_start
         if cancelled is not None and cancelled():
             raise InterruptedError("Cancelled before VAE")
         vae_start = time.perf_counter()
-        audio = self.decode(latents)
+        audio = self.decode(
+            latents,
+            on_progress=((lambda done, total: on_progress("vae", done, total)) if on_progress is not None else None))
         timing = {"abc": plan.timing, "semantic": semantic.timing, "nar_seconds": nar_seconds,
                   "vae_seconds": time.perf_counter() - vae_start, "load": dict(self.load_timing),
                   "e2e_seconds": time.perf_counter() - start}

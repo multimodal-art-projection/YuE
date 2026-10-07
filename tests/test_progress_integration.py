@@ -167,6 +167,71 @@ def test_pipeline_passes_acoustic_callbacks_only_when_enabled(enabled, monkeypat
         assert captured.err == ''
 
 
+@pytest.mark.parametrize('enabled', [True, False])
+def test_external_on_progress_is_forwarded_independently_of_display(enabled, monkeypatch, capsys):
+    """An explicit on_progress reaches NAR/VAE even with display off, and never adds output."""
+    pipe = bare_pipe(enabled)
+    pipe.quantization, pipe.offload_ar, pipe.vae_core_frames = 'none', False, 1
+    pipe.device, pipe._model = torch.device('cpu'), None
+    expected = torch.arange(128, dtype=torch.float32).reshape(2, 64)
+    seen, external = [], []
+
+    def synthesize(model, prefix, tokens, seed, *, steps, context, offload_ar, cancelled, on_progress):
+        seen.append(on_progress is not None)
+        if on_progress is not None:
+            on_progress(1, steps)
+            on_progress(steps, steps)
+        return expected
+
+    class Decoder:
+        def to(self, device):
+            return self
+
+        def decode_tiled(self, latent, *, core_frames, halo_frames, output_device, on_progress):
+            seen.append(on_progress is not None)
+            if on_progress is not None:
+                on_progress(1, 2)
+                on_progress(2, 2)
+            return torch.zeros(1, 2, 16)
+
+    monkeypatch.setattr(nar, 'synthesize', synthesize)
+    pipe._vae = Decoder()
+    plan = pipe.plan('piano', 'original lyric', cot='off', seed=42)
+    semantic = pipeline.SemanticResult(plan, [1, 2], {}, False)
+    steps = pipe.generation_config.ode_steps
+    latent = pipe.synthesize(semantic, on_progress=lambda done, total: external.append(('nar', done, total)))
+    audio = pipe.decode(latent, on_progress=lambda done, total: external.append(('vae', done, total)))
+    assert torch.equal(torch.from_numpy(latent), expected) and audio.shape == (16, 2)
+    assert seen == [True, True]
+    assert external == [('nar', 1, steps), ('nar', steps, steps), ('vae', 1, 2), ('vae', 2, 2)]
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    if enabled:
+        assert 'Completed Synthesizing audio: 32/32 steps' in captured.err
+        assert 'Completed Decoding audio: 2/2 chunks' in captured.err
+    else:
+        assert captured.err == ''
+
+
+def test_full_decode_reports_its_single_chunk_to_external_on_progress(monkeypatch, capsys):
+    pipe = bare_pipe(False)
+    pipe.quantization, pipe.offload_ar, pipe.vae_core_frames = 'none', False, 1
+    pipe.device, pipe._model = torch.device('cpu'), None
+    external = []
+
+    class Decoder:
+        def to(self, device):
+            return self
+
+        def decode(self, latent):
+            return torch.zeros(1, 2, 16)
+
+    pipe._vae = Decoder()
+    audio = pipe.decode(torch.zeros(2, 64), full=True, on_progress=lambda done, total: external.append((done, total)))
+    assert audio.shape == (16, 2) and external == [(1, 1)]
+    assert capsys.readouterr() == ('', '')
+
+
 @pytest.mark.parametrize('command', ['generate', 'batch'])
 @pytest.mark.parametrize('quiet_flag', [None, '--quiet', '--no-progress'])
 def test_cli_quiet_propagates_and_does_not_pollute_result_stdout(command, quiet_flag, monkeypatch, tmp_path, capsys):
