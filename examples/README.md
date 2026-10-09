@@ -19,6 +19,15 @@ python examples/generate.py --abc-file examples/score-jazz.abc \
   --cot full --output outputs/harmony-edited
 ```
 
+Render a short instrumental clip with the instrumental skill's recipe (the model writes a score, the Vocal melody moves onto the instrumental part, the stock model renders it) in a single model load, with the token budget capped to the length you ask for:
+
+```bash
+python examples/instrumental_clip.py --style "warm solo piano, lyrical and gentle" \
+  --seconds 60 --seed 7 --output outputs/clip.flac --save-score outputs/clip.abc
+```
+
+It imports the score-transfer code from `skills/yue2-music/instrumental/scripts`, so run it from a checkout. The clip is the opening of a longer planned piece, so a `--seconds` shorter than a full song ends mid-piece rather than on a final cadence. It does not run the skill's delivery checks, listening page or hashes; use `instrumental.py run` when you need those.
+
 The script preserves all native artifacts, refuses an existing output directory, and exits nonzero if generation reports truncation. The seed is fixed in `song.json`; seeds aid comparison but do not guarantee identical output across devices or software versions. Use `--revision` and `--vae-revision` to pin model versions.
 
 Check the symbolic intervention without a GPU:
