@@ -7,6 +7,8 @@ positions and cache slots. No vLLM, Triton, or custom extension is imported.
 from __future__ import annotations
 from numbers import Integral
 
+import sys
+
 import torch
 import torch.nn.functional as F
 
@@ -72,7 +74,10 @@ class GraphAR:
         if attention_backend not in {"auto", "flash", "cudnn", "sdpa"}:
             raise ValueError("attention_backend must be auto, flash, cudnn, or sdpa")
         fused = self.device.type == "cuda" and self.dtype in {torch.bfloat16, torch.float16} and config.head_dim % 8 == 0
-        flash = fused and config.head_dim <= 256 and hasattr(torch.ops.aten, "_flash_attention_forward") and (
+        # Windows wheels expose the op schema but ship no FlashAttention kernel;
+        # selecting it would fail at capture time with USE_FLASH_ATTENTION.
+        flash = fused and config.head_dim <= 256 and sys.platform.startswith("linux") and \
+            hasattr(torch.ops.aten, "_flash_attention_forward") and (
             "seqused_k" in str(torch.ops.aten._flash_attention_forward.default._schema))
         # Torch 2.10 is pinned by the package. Its native variable-length FA
         # accepts GPU effective lengths; the public masked SDPA can select a
@@ -149,10 +154,18 @@ class GraphAR:
                     seqused_k=used_lengths)[0][:, None]
             elif self.attention_backend == "cudnn":
                 from torch.nn.attention import SDPBackend, sdpa_kernel
+                # cuDNN attention requires equal Q/KV head counts, so expand
+                # the KV heads for group-query checkpoints before calling it.
+                ratio = config.num_attention_heads // config.num_key_value_heads
+                keys_packed, values_packed = keys.transpose(1, 2), values.transpose(1, 2)
+                if ratio != 1:
+                    keys_packed = keys_packed.unsqueeze(3).expand(-1, -1, -1, ratio, -1).reshape(
+                        self.branches, config.num_attention_heads, self.capacity, config.head_dim)
+                    values_packed = values_packed.unsqueeze(3).expand(-1, -1, -1, ratio, -1).reshape(
+                        self.branches, config.num_attention_heads, self.capacity, config.head_dim)
                 with sdpa_kernel(SDPBackend.CUDNN_ATTENTION):
-                    h = F.scaled_dot_product_attention(q.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2),
-                            attn_mask=visible, is_causal=False,
-                            enable_gqa=config.num_attention_heads != config.num_key_value_heads).transpose(1, 2)
+                    h = F.scaled_dot_product_attention(q.transpose(1, 2), keys_packed, values_packed,
+                            attn_mask=visible, is_causal=False).transpose(1, 2)
             else:
                 h = F.scaled_dot_product_attention(q.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2),
                             attn_mask=visible, is_causal=False,
