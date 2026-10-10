@@ -159,9 +159,13 @@ class GraphAR:
                 ratio = config.num_attention_heads // config.num_key_value_heads
                 keys_packed, values_packed = keys.transpose(1, 2), values.transpose(1, 2)
                 if ratio != 1:
-                    keys_packed = keys_packed.unsqueeze(3).expand(-1, -1, -1, ratio, -1).reshape(
+                    # Insert the group dim right after the KV head dim so the
+                    # reshape yields the same head grouping as repeat_interleave
+                    # (query head h reads KV head h // ratio). Placing it after
+                    # capacity would scramble KV across heads and positions.
+                    keys_packed = keys_packed.unsqueeze(2).expand(-1, -1, ratio, -1, -1).reshape(
                         self.branches, config.num_attention_heads, self.capacity, config.head_dim)
-                    values_packed = values_packed.unsqueeze(3).expand(-1, -1, -1, ratio, -1).reshape(
+                    values_packed = values_packed.unsqueeze(2).expand(-1, -1, ratio, -1, -1).reshape(
                         self.branches, config.num_attention_heads, self.capacity, config.head_dim)
                 with sdpa_kernel(SDPBackend.CUDNN_ATTENTION):
                     h = F.scaled_dot_product_attention(q.transpose(1, 2), keys_packed, values_packed,
