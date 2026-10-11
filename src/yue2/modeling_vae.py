@@ -504,7 +504,8 @@ class YuE2VAE(PreTrainedModel):
         if not torch.isfinite(audio).all():
             raise ValueError("Audio contains non-finite values")
         device = next(self.encoder.parameters()).device
-        pre = self.encoder(audio.to(device=device, dtype=torch.float32))
+        with torch.autocast(device_type=device.type, enabled=False):
+            pre = self.encoder(audio.to(device=device, dtype=torch.float32))
         mean, scale = pre.chunk(2, dim=1)
         stdev = torch.nn.functional.softplus(scale) + 1e-4
         if sample:
