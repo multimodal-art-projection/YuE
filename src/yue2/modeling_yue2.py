@@ -462,6 +462,8 @@ class YuE2PreTrainedModel(PreTrainedModel):
 class YuE2ForCausalLM(YuE2PreTrainedModel, GenerationMixin):
     """YuE2 model: AR causal LM (generate) + NAR flow matching (ODE)."""
 
+    _tied_weights_keys = ["lm_head.weight"]
+
     def __init__(self, config: YuE2Config):
         super().__init__(config)
         self.model = Backbone(config)

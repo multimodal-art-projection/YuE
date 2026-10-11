@@ -92,6 +92,8 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
                         if name in tensors:
                             raise ValueError(f"Duplicate source tensor: {name}")
                         tensors[name] = reader.get_tensor(name)
+                if config.get("tie_word_embeddings") and "lm_head.weight" not in tensors and "model.embed_tokens.weight" in tensors:
+                    tensors["lm_head.weight"] = tensors["model.embed_tokens.weight"].clone()
                 if set(tensors) != wanted:
                     raise ValueError(f"Missing AR tensors: {sorted(wanted - set(tensors))}")
                 save_file(tensors, temp / "model.safetensors", metadata={"format": "pt"})
