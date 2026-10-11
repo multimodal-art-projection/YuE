@@ -318,6 +318,13 @@ class YuE2Pipeline:
         self.close()
 
     def decode(self, latents, *, full=False, vae=None):
+        z = torch.as_tensor(latents, dtype=torch.float32)
+        if z.ndim == 2 and z.shape[1] == 64:
+            z = z.T.unsqueeze(0)
+        if z.ndim != 3 or z.shape[0] != 1 or z.shape[1] != 64:
+            raise ValueError("Expected latents [T,64] or [1,64,T]")
+        if z.shape[-1] < 1 or not torch.isfinite(z).all():
+            raise ValueError("Expected nonempty finite latents")
         from .modeling_vae import YuE2VAE
         with self._status("Loading audio decoder"):
             if self._model is not None:
@@ -331,11 +338,6 @@ class YuE2Pipeline:
                     self._vae = YuE2VAE.from_pretrained(self.vae_dir, decoder_only=True, device="cpu",
                                                         local_files_only=True)
                 model = self._vae.to(self.device)
-        z = torch.as_tensor(latents, dtype=torch.float32)
-        if z.ndim == 2 and z.shape[1] == 64:
-            z = z.T.unsqueeze(0)
-        if z.ndim != 3 or z.shape[0] != 1 or z.shape[1] != 64:
-            raise ValueError("Expected latents [T,64] or [1,64,T]")
         try:
             tiles = 1 if full else (z.shape[-1] + self.vae_core_frames - 1) // self.vae_core_frames
             with self._status("Decoding audio", total=tiles, unit="chunks") as status:
