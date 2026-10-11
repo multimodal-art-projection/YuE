@@ -114,8 +114,10 @@ def model_identity(path, verify=True):
     for file in files:
         digest = sha256_file(file)
         if verify and expected is not None:
-            wanted = expected.get("files", {}).get(file.name, {}).get("sha256")
-            if wanted != digest:
+            record = expected.get("files", {}).get(file.name, {})
+            wanted = record.get("sha256")
+            size = record.get("bytes")
+            if wanted != digest or type(size) is not int or size != file.stat().st_size:
                 raise ValueError(f"Weight integrity failed: {file.name}")
         entries[file.name] = {"sha256": digest, "bytes": file.stat().st_size}
     if expected is not None and set(entries) != set(expected.get("files", {})):
