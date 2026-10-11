@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 
 
@@ -24,10 +25,17 @@ def identity(value):
 def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
-                         encoding="utf-8")
-    os.replace(temporary, path)
+    rendered = json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=path.name + ".", suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(rendered)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 # Explicit public model files. Extra reports, caches and arbitrary code are not exported.
