@@ -51,6 +51,10 @@ class GenerationConfig:
     version: str = PROTOCOL_VERSION
 
     def __post_init__(self):
+        if self.version != PROTOCOL_VERSION:
+            raise ValueError(f"Unsupported generation protocol version: {self.version!r}")
+        if not isinstance(self.abc, Sampling) or not isinstance(self.semantic, Sampling):
+            raise TypeError("abc and semantic must be Sampling objects; use from_dict for dictionaries")
         if self.context != CONTEXT or self.ode_method != "midpoint" or type(self.ode_steps) is not int or self.ode_steps < 1:
             raise ValueError("Require context=24576 and midpoint with positive integer steps")
 
