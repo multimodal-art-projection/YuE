@@ -65,10 +65,14 @@ def copy_model_files(source, destination):
     if kind == "yue2":
         from .modeling_yue2 import YuE2Config
         clean_config = YuE2Config(**config).to_dict()
+        clean_config["auto_map"] = {"AutoConfig": "modeling_yue2.YuE2Config",
+                                    "AutoModelForCausalLM": "modeling_yue2.YuE2ForCausalLM"}
         code_name = "modeling_yue2.py"
     elif kind == "yue2_vae":
         from .modeling_vae import YuE2VAEConfig
         clean_config = YuE2VAEConfig(**config).to_dict()
+        clean_config["auto_map"] = {"AutoConfig": "modeling_vae.YuE2VAEConfig",
+                                    "AutoModel": "modeling_vae.YuE2VAE"}
         code_name = "modeling_vae.py"
     else:
         raise ValueError("Unsupported model configuration")
