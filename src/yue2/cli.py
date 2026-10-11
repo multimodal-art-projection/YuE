@@ -57,6 +57,42 @@ def request_kwargs(data, base=Path.cwd()):
     return result
 
 
+def decode_latents(args):
+    """Decode a standalone latent array with only the FP32 VAE loaded."""
+    output = Path(args.output)
+    if output.exists():
+        raise FileExistsError(f"Output already exists: {output}")
+    if output.suffix.lower() not in {".flac", ".wav"}:
+        raise ValueError("Use .flac or .wav")
+    import numpy as np
+    import soundfile as sf
+    from .modeling_vae import YuE2VAE, YuE2VAEConfig
+    from .storage import resolve_model, model_identity
+    source = resolve_model(args.vae, revision=args.vae_revision, local_files_only=args.offline)
+    config = YuE2VAEConfig.from_pretrained(source, local_files_only=True)
+    latent = np.load(args.latent, allow_pickle=False)
+    if latent.dtype.kind != "f" or not np.isfinite(latent).all():
+        raise ValueError("Latents must contain finite floating-point values")
+    if latent.ndim == 2 and latent.shape[1] == config.latent_dim:
+        latent = latent.T[None]
+    if latent.ndim != 3 or latent.shape[:2] != (1, config.latent_dim) or latent.shape[-1] < 1:
+        raise ValueError(f"Expected nonempty [T,{config.latent_dim}] or [1,{config.latent_dim},T] latents")
+    weights = model_identity(source)
+    model = YuE2VAE.from_pretrained(source, config=config, decoder_only=True,
+                                    device=args.device, local_files_only=True)
+    audio = model.decode_tiled(latent)[0].transpose(0, 1).numpy().clip(-1, 1)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("xb") as stream:
+        sf.write(stream, audio, config.sample_rate,
+                 format="FLAC" if output.suffix.lower() == ".flac" else "WAV",
+                 subtype="PCM_24" if output.suffix.lower() == ".flac" else "FLOAT")
+    print(json.dumps({"operation": "decode_latents", "output": str(output),
+                      "decoder_only": True, "sample_rate": config.sample_rate,
+                      "audio_seconds": len(audio) / config.sample_rate,
+                      "weights": weights, "quality_checked": False}))
+    return 0
+
+
 def doctor(args):
     import torch
     from .storage import model_identity
@@ -220,13 +256,20 @@ def parser():
                 q.add_argument("--seed", type=int)
                 q.add_argument("--cfg-scale", type=float)
                 q.add_argument("--stage", choices=("plan", "audio"), default="audio")
+    q = sub.add_parser("decode", help="Decode standalone latents with only the VAE")
+    q.add_argument("latent")
+    q.add_argument("--vae", required=True, help="Local VAE directory or Hugging Face repository")
+    q.add_argument("--vae-revision")
+    q.add_argument("--offline", action="store_true")
+    q.add_argument("--device", default="cpu")
+    q.add_argument("--output", required=True)
     return p
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parser().parse_args(argv)
-    return {"doctor": doctor, "generate": generate, "batch": batch}[args.command](args)
+    return {"doctor": doctor, "generate": generate, "batch": batch, "decode": decode_latents}[args.command](args)
 
 
 if __name__ == "__main__":

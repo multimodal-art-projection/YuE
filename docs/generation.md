@@ -56,6 +56,10 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 
 `from_pretrained` accepts local model directories, `revision`, `vae_revision`, `cache_dir`, and `local_files_only=True`. Pin model and VAE revisions for comparisons. Separate GPUs, runtime versions, or sampling settings can change a seeded generation.
 
+## Decode a standalone latent file
+
+Use `yue2 decode latent.npy --vae models/YuE2-Vae --offline --device cpu --output decoded.wav` to decode cached floating-point latents without an AR checkpoint, tokenizer or complete original run. The command accepts `[T,64]` or `[1,64,T]` for the standard decoder, verifies VAE weight hashes, loads only its FP32 decoder and uses bounded native tiling. It refuses existing outputs and writes FLOAT WAV or PCM24 FLAC, clipping to `[-1,1]` as the pipeline does. JSON output records decoder weight identity and duration; it is not a generation receipt, provenance authentication or quality assessment. The portable skill re-decode workflow remains useful when preserving the complete original request and exact AR identity is required.
+
 ## Listening and evaluation decoders
 
 | Decoder | Use |
