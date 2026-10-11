@@ -327,6 +327,12 @@ class YuE2VAEConfig(PretrainedConfig):
             raise ValueError("Decoder strides do not match downsampling_ratio")
         if self.decoder_config["latent_dim"] != self.latent_dim:
             raise ValueError("Decoder input channels do not match latent_dim")
+        if self.encoder_config["latent_dim"] != 2 * self.latent_dim:
+            raise ValueError("Encoder posterior channels must equal twice latent_dim")
+        if math.prod(self.encoder_config["strides"]) != self.downsampling_ratio:
+            raise ValueError("Encoder strides do not match downsampling_ratio")
+        if self.encoder_config["in_channels"] != self.audio_channels or self.decoder_config["out_channels"] != self.audio_channels:
+            raise ValueError("Audio channels must match encoder input and decoder output")
 
 
 def _dependency_interval(module, low, high):
