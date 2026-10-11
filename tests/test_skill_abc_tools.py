@@ -83,4 +83,41 @@ class ABCChecks(unittest.TestCase):
             with self.subTest(case=i):
                 with self.assertRaises(a.AbcError): a.parse(text)
 
+    def test_city_lights_sections_and_seven_onsets(self):
+        request = json.loads((ROOT / 'examples/song.json').read_text(encoding='utf-8'))
+        abc = (ROOT / 'examples/score.abc').read_text(encoding='utf-8')
+        lines = [
+            'Neon fades along the lane',
+            'Footsteps keep the time of rain',
+            'Fold the night and leave it here',
+            'Morning has a sky to clear',
+            'Let the day come into view',
+            'Every road begins with you',
+            'Hold a little room for light',
+            'We will sing beyond the night',
+        ]
+        self.assertEqual([a.estimate_syllables(line) for line in lines], [7] * 8)
+        report = a.align_lyrics(request['lyrics'], abc, require_line_per_bar=True,
+                                require_onset_syllables=True)
+        self.assertTrue(report['match'], report['differences'])
+        self.assertEqual([pair['lyric_name'] for pair in report['pairs']], ['verse', 'chorus'])
+        self.assertEqual([pair['score_measures'] for pair in report['pairs']], [4, 4])
+        self.assertEqual(report['pairs'][0]['onsets_per_bar'], [7, 7, 7, 7])
+
+    def test_section_name_mismatch_and_line_count(self):
+        lyrics = '[Chorus]\nOne line only\n'
+        report = a.align_lyrics(lyrics, score('"C"C32|'))
+        self.assertFalse(report['match'])
+        self.assertTrue(any('chorus' in item and 'verse' in item for item in report['differences']))
+        strict = a.align_lyrics('[Verse]\nOne line\nTwo lines\n[Chorus]\nOnly one\n',
+                                (ROOT / 'examples/score.abc').read_text(encoding='utf-8'),
+                                require_line_per_bar=True)
+        self.assertFalse(strict['match'])
+        self.assertTrue(any('lyric lines vs' in item for item in strict['differences']))
+
+    def test_mandarin_ideographs_count_as_syllables(self):
+        self.assertEqual(a.estimate_syllables('晚风轻轻吹过窗前'), 8)
+        self.assertEqual(a.normalize_section('Verse 1'), 'verse 1')
+        self.assertEqual(a.normalize_section('PRE-CHORUS'), 'pre-chorus')
+
 if __name__=='__main__': unittest.main(verbosity=2)

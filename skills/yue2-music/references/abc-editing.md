@@ -119,6 +119,16 @@ If melodic or metrical adaptation is authorized, a comparison failure can be exp
 
 ## Lyrics, syllables and phonemes
 
+Compare lyric `[Section]` tags with the score's `% section` comments before editing either side:
+
+```bash
+python scripts/abc_tools.py align-lyrics --request request.json --score source.abc
+python scripts/abc_tools.py align-lyrics --lyrics lyrics.txt --score edited.abc \
+  --require-line-per-bar --output phrasing.json
+```
+
+Names are compared after lowercasing (`[Verse]` matches `% verse`). The report lists lyric lines, vocal measures, estimated syllables, and vocal onsets. Default `match` is true when the section sequence agrees. `--require-line-per-bar` also requires one lyric line per measure in each paired section. `--require-onset-syllables` compares a simple syllable estimate (Latin vowel groups, with `every`/`ever`/`beyond` as two; each CJK ideograph counts as one) to that bar's vocal onsets. A match is a designed symbolic fit, not proof that generated audio follows the lyric.
+
 The generation API accepts lyrics and ABC, not a forced phoneme-to-note alignment channel. Keep alignment records in sidecar JSON/Markdown; do not add non-native phoneme annotations or `w:` fields to the model's ABC.
 
 When changing language, adapt the lyrics for singing rather than translating word for word. Use the final score's resolved vocal notes to map every sung syllable to its intended note or contiguous melisma. Map consonants to attacks/releases and sustain vowels across melismas; one phoneme does not equal one note. Check lexical stress, short-note consonant density, long-note vowel choice, breathing rests, pickup syllables and section tags. If using a pronunciation dictionary, preserve the selected pronunciations and their provenance, and flag out-of-vocabulary words for manual review.
