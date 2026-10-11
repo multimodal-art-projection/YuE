@@ -11,7 +11,6 @@ import hashlib
 from pathlib import Path
 import subprocess
 import sys
-import tomllib
 import zipfile
 
 
@@ -60,6 +59,7 @@ def write_checksums(output: Path, artifacts: list[Path]) -> None:
 
 
 def build(root: Path, output: Path) -> list[Path]:
+    import tomllib
     archive = build_skill(root, output)
     version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
     subprocess.run(
