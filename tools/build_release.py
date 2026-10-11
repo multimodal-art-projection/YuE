@@ -15,6 +15,14 @@ import tomllib
 import zipfile
 
 
+SKILL_FILES = frozenset({
+    "SKILL.md", "LICENSE", "agents/openai.yaml", "assets/edit-brief.md", "assets/prompt.json",
+    "scripts/abc_tools.py", "scripts/common.py", "scripts/listen.py", "scripts/run_yue2.py", "scripts/transcribe.py",
+    "references/abc-editing.md", "references/editing-workflows.md", "references/generation-and-covers.md",
+    "references/listening-and-evaluation.md", "references/models-and-setup.md",
+})
+
+
 def build_skill(root: Path, output: Path) -> Path:
     output.mkdir(parents=True, exist_ok=True)
     skill = root / "skills" / "yue2-music"
@@ -31,11 +39,12 @@ def build_skill(root: Path, output: Path) -> Path:
             raise ValueError(f"Symlinks cannot be distributed: {relative}")
         if not path.is_file() or path.suffix == ".pyc":
             continue
-        if relative.parts[0] not in {"SKILL.md", "LICENSE", "agents", "assets", "references", "scripts", "instrumental"}:
+        if relative.parts[0] != "instrumental" and relative.as_posix() not in SKILL_FILES:
             raise ValueError(f"Unexpected skill file: {relative}")
         members.append((path, "yue2-music/" + relative.as_posix()))
-    if not any(name == "yue2-music/SKILL.md" for _, name in members):
-        raise ValueError("Missing skill entrypoint")
+    present = {name.removeprefix("yue2-music/") for _, name in members}
+    if not SKILL_FILES <= present:
+        raise ValueError(f"Missing skill files: {sorted(SKILL_FILES - present)}")
     archive = output / "yue2-music.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as package:
         for path, name in members:
