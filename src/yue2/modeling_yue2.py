@@ -503,6 +503,8 @@ class YuE2ForCausalLM(YuE2PreTrainedModel, GenerationMixin):
         return_dict: Optional[bool] = None,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+        if labels is not None and (not isinstance(logits_to_keep, int) or logits_to_keep != 0):
+            raise ValueError("Loss computation requires logits_to_keep=0")
         if (input_ids is None) == (inputs_embeds is None):
             raise ValueError("Supply exactly one of input_ids or inputs_embeds")
         use_cache = use_cache if use_cache is not None else getattr(self.config, "use_cache", True)
