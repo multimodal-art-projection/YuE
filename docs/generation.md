@@ -56,6 +56,10 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 
 `from_pretrained` accepts local model directories, `revision`, `vae_revision`, `cache_dir`, and `local_files_only=True`. Pin model and VAE revisions for comparisons. Separate GPUs, runtime versions, or sampling settings can change a seeded generation.
 
+## Inspect a saved run
+
+Run `yue2 inspect runs/default/song` to check every recorded native artifact hash and size before handing the run to another tool. This command loads no generation model or tokenizer and prints the stored identity, duration, sample rate and truncation flags as JSON. `artifacts_verified` describes file integrity against the saved receipt; receipts are not signatures or independent provenance. `needs_review` flags truncated stages, and `quality_checked` remains false: a complete receipt does not assess audio quality, vocals or prompt adherence.
+
 ## Listening and evaluation decoders
 
 | Decoder | Use |

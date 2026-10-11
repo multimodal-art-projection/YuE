@@ -57,6 +57,17 @@ def request_kwargs(data, base=Path.cwd()):
     return result
 
 
+def inspect_run(args):
+    """Verify a saved run without loading generation models."""
+    result = verify_result(args.directory)
+    report = {"artifacts_verified": True, "identity": result["identity"],
+              "sample_rate": result["sample_rate"], "audio_seconds": result["audio_seconds"],
+              "truncated": result["truncated"],
+              "needs_review": any(result["truncated"].values()), "quality_checked": False}
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0
+
+
 def doctor(args):
     import torch
     from .storage import model_identity
@@ -220,13 +231,15 @@ def parser():
                 q.add_argument("--seed", type=int)
                 q.add_argument("--cfg-scale", type=float)
                 q.add_argument("--stage", choices=("plan", "audio"), default="audio")
+    q = sub.add_parser("inspect", help="Verify saved artifacts without loading models")
+    q.add_argument("directory")
     return p
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parser().parse_args(argv)
-    return {"doctor": doctor, "generate": generate, "batch": batch}[args.command](args)
+    return {"doctor": doctor, "generate": generate, "batch": batch, "inspect": inspect_run}[args.command](args)
 
 
 if __name__ == "__main__":
