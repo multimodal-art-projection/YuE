@@ -109,34 +109,35 @@ def generate(args):
                 "lyrics": "[Verse]\n晚风轻轻吹过窗前\n你留下的笑还在昨天\n[Chorus]\n让这首歌陪你走远\n把所有想念唱成明天"}
     kwargs = request_kwargs(data, base)
     pipe = get_pipe(args)
-    directory = Path(args.output or "runs/default") / kwargs.get("id", "song")
-    if args.resume and (directory / "result.json").exists():
-        req_kwargs = {k: v for k, v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}}
-        request = pipe._request(**req_kwargs)
-        config = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
-        expected = identity({"request": request.to_dict(), "config": config, "weights": pipe.weights})
-        result = verify_result(directory, expected)
-        print(json.dumps({"resumed": True, "result": str(directory / "result.json"), "truncated": result["truncated"]}))
-        return 0
-    if directory.exists() and any(directory.iterdir()):
-        raise FileExistsError(f"Nonempty output {directory}; use --resume or a new output directory")
-    directory.mkdir(parents=True, exist_ok=True)
     try:
-        if args.stage == "plan":
-            kwargs.pop("semantic_sampling", None)
-            plan = pipe.plan(**kwargs)
-            plan.save(directory)
-            print(json.dumps({"stage": "plan", "output": str(directory), "truncated": plan.truncated}))
-        else:
-            result = pipe(**kwargs)
-            result.save_artifacts(directory)
-            print(json.dumps({"status": "complete", "output": str(directory), "truncated": result.truncated,
-                              "seconds": result.timing["e2e_seconds"]}))
-        return 0
-    except BaseException as exc:
-        write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
-                                                "request": data})
-        raise
+        directory = Path(args.output or "runs/default") / kwargs.get("id", "song")
+        if args.resume and (directory / "result.json").exists():
+            req_kwargs = {k: v for k, v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}}
+            request = pipe._request(**req_kwargs)
+            config = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
+            expected = identity({"request": request.to_dict(), "config": config, "weights": pipe.weights})
+            result = verify_result(directory, expected)
+            print(json.dumps({"resumed": True, "result": str(directory / "result.json"), "truncated": result["truncated"]}))
+            return 0
+        if directory.exists() and any(directory.iterdir()):
+            raise FileExistsError(f"Nonempty output {directory}; use --resume or a new output directory")
+        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            if args.stage == "plan":
+                kwargs.pop("semantic_sampling", None)
+                plan = pipe.plan(**kwargs)
+                plan.save(directory)
+                print(json.dumps({"stage": "plan", "output": str(directory), "truncated": plan.truncated}))
+            else:
+                result = pipe(**kwargs)
+                result.save_artifacts(directory)
+                print(json.dumps({"status": "complete", "output": str(directory), "truncated": result.truncated,
+                                  "seconds": result.timing["e2e_seconds"]}))
+            return 0
+        except BaseException as exc:
+            write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
+                                                    "request": data})
+            raise
     finally:
         pipe.close()
 
