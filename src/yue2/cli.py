@@ -57,6 +57,20 @@ def request_kwargs(data, base=Path.cwd()):
     return result
 
 
+def export_models(args):
+    """Export a verified, portable local pipeline without generating a song."""
+    directory = Path(args.output)
+    if directory.exists() and any(directory.iterdir()):
+        raise FileExistsError("Export needs an empty output directory")
+    pipe = get_pipe(args)
+    try:
+        pipe.save_pretrained(directory)
+    finally:
+        pipe.close()
+    print(json.dumps({"exported": True, "pipeline": str(directory / "pipeline.json")}))
+    return 0
+
+
 def doctor(args):
     import torch
     from .storage import model_identity
@@ -186,7 +200,7 @@ def batch(args):
 def parser():
     p = argparse.ArgumentParser(description="YuE2: style + lyrics → symbolic plan → song")
     sub = p.add_subparsers(dest="command", required=True)
-    for name in ("doctor", "generate", "batch"):
+    for name in ("doctor", "generate", "batch", "export"):
         q = sub.add_parser(name)
         q.add_argument("--model")
         q.add_argument("--vae", default="standard", help="standard (listening), legacy (paper evaluation), local path or HF repo")
@@ -199,8 +213,10 @@ def parser():
         q.add_argument("--offload-ar", action="store_true")
         q.add_argument("--offline", action="store_true")
         q.add_argument("--config")
-        q.add_argument("--output")
-        if name == "doctor":
+        q.add_argument("--output", required=name == "export")
+        if name == "export":
+            q.add_argument("--quiet", "--no-progress", action="store_true")
+        elif name == "doctor":
             q.add_argument("--verify-hashes", action="store_true")
         else:
             q.add_argument("--cot", choices=("full", "melody", "off"))
@@ -226,7 +242,7 @@ def parser():
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parser().parse_args(argv)
-    return {"doctor": doctor, "generate": generate, "batch": batch}[args.command](args)
+    return {"doctor": doctor, "generate": generate, "batch": batch, "export": export_models}[args.command](args)
 
 
 if __name__ == "__main__":

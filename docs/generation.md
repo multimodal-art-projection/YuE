@@ -56,6 +56,10 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 
 `from_pretrained` accepts local model directories, `revision`, `vae_revision`, `cache_dir`, and `local_files_only=True`. Pin model and VAE revisions for comparisons. Separate GPUs, runtime versions, or sampling settings can change a seeded generation.
 
+## Export an offline pipeline
+
+Use `yue2 export --model models/YuE2-3B --vae models/YuE2-Vae --offline --device cpu --output exports/song-model` to verify and copy the model, tokenizer, decoder, generation defaults and weight manifests into a portable local pipeline. The command uses the public `save_pretrained` file boundary and requires an empty destination. It does not generate audio or upload files; the export contains model weights and should be stored accordingly. Load it with `YuE2Pipeline.from_pretrained("exports/song-model", local_files_only=True)`.
+
 ## Listening and evaluation decoders
 
 | Decoder | Use |
