@@ -147,8 +147,13 @@ def batch(args):
     path = Path(args.input)
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     ids = [r.get("id") for r in rows]
-    if any(x is None for x in ids) or len(ids) != len(set(ids)):
-        raise ValueError("Every batch request must have a unique id")
+    if any(not isinstance(x, str) for x in ids) or len(ids) != len(set(ids)):
+        raise ValueError("Every batch request must have a unique string id")
+    # IDs select filesystem destinations, including failure receipts. Validate
+    # them before loading a model or entering the per-request error handler.
+    from .protocol import SongRequest
+    for identifier in ids:
+        SongRequest(style="", lyrics="", id=identifier)
     pipe = get_pipe(args)
     output = Path(args.output or "runs/batch")
     receipts, failures = [], 0
