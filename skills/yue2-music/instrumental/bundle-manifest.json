@@ -100,8 +100,8 @@
       "bytes": 27776
     },
     "scripts/transcribe_cover.py": {
-      "sha256": "d88174a8d7cd4d8b9c86f7c6096f3d59796e2dcdb80a8e2878330273a9b52b34",
-      "bytes": 6071
+      "sha256": "ea4bb23c684e1a83a38934c78e2d2385b32daf6bc6668cfb3a81730f4e391704",
+      "bytes": 6300
     },
     "scripts/verify_bundle.py": {
       "sha256": "9c1d93bd276b946fbd422a1c64f0a6aeb8cbf934cf2ca228018749d075ec8f20",

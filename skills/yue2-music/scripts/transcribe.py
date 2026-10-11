@@ -69,11 +69,14 @@ def run(args):
         )
         if result.get("abc_error") or not result.get("abc"):
             raise ValueError(f"Transcription produced no usable ABC: {result.get('abc_error')}")
-        score = parse_abc(result["abc"])
-        if args.task != "full" and any(v.chords for v in score.voices.values()):
-            raise ValueError("Melody transcription contains unexpected chord symbols")
         if not (output / "score.abc").is_file():
             raise ValueError("Transcriber did not save score.abc")
+        saved_abc = (output / "score.abc").read_bytes().decode("utf-8")
+        if saved_abc.replace("\r\n", "\n") != result["abc"].replace("\r\n", "\n"):
+            raise ValueError("Saved ABC differs from the transcriber result")
+        score = parse_abc(saved_abc)
+        if args.task != "full" and any(v.chords for v in score.voices.values()):
+            raise ValueError("Melody transcription contains unexpected chord symbols")
         write_json(output / "abc_check.json", {"status": "passed", "score": report(score),
                    "scope": "symbolic format; transcription accuracy still needs review"})
         write_json(output / "transcription_manifest.json", {
