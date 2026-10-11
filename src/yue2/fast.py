@@ -78,7 +78,10 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
             manifest = json.loads((target / "derivation.json").read_text(encoding="utf-8"))
             if manifest.get("identity") != key or manifest.get("source") != source:
                 raise ValueError("AR cache provenance mismatch; remove this derived cache explicitly")
-            for name, digest in manifest["sha256"].items():
+            hashes = manifest.get("sha256")
+            if not isinstance(hashes, dict) or set(hashes) != {"model.safetensors", "config.json"}:
+                raise ValueError("Incomplete derived AR cache integrity manifest; remove this derived cache explicitly")
+            for name, digest in hashes.items():
                 if sha256_file(target / name) != digest:
                     raise ValueError(f"Corrupt derived AR cache: {name}")
             return target
