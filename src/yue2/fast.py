@@ -269,7 +269,7 @@ class _Worker:
                             on_token(payload["phase"], event["token"])
                         if event.get("event") == "result":
                             return event["ids"], event["timing"], event["truncated"]
-                if self.process.poll() is not None:
+                if self.process.poll() is not None and not self.selector.select(timeout=0):
                     break
             self.log.flush()
             details = self.log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
