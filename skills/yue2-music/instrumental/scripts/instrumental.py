@@ -279,7 +279,7 @@ def generate(args):
 
 def verify(args):
     path = args.directory
-    if (path / 'prepared-manifest.json').is_file():
+    if (path / 'prepared-manifest.json').is_file() and not (path / 'delivery-manifest.json').exists() and not (path / 'native/result.json').exists():
         request = load_prepared(path)
         print(json.dumps({'verified': True, 'kind': 'prepared', 'id': request['id']}))
         return 0
