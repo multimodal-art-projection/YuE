@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable, Literal
 
 import torch
@@ -440,8 +440,14 @@ class YuE2VAE(PreTrainedModel):
         index = path / "model.safetensors.index.json"
         if index.exists():
             mapping = json.loads(index.read_text(encoding="utf-8"))["weight_map"]
-            files = sorted({name for key, name in mapping.items()
-                            if not decoder_only or key.startswith("decoder.")})
+            files = {name for key, name in mapping.items()
+                     if not decoder_only or key.startswith("decoder.")}
+            for name in files:
+                shard = Path(name)
+                portable = PureWindowsPath(name)
+                if shard.is_absolute() or portable.drive or portable.root or ".." in shard.parts or ".." in portable.parts:
+                    raise ValueError("Invalid VAE shard path: indexed filenames must be relative and contain no parent traversal")
+            files = sorted(files)
         else:
             files = ["model.safetensors"]
         state = {}
