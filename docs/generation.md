@@ -28,6 +28,13 @@ The command-line equivalent is:
 yue2 generate --request examples/song.json --output outputs/song-cli
 ```
 
+Check a request or a JSONL batch before generation. `yue2 validate` uses the same field rules as `generate` and `batch` and does not load model weights:
+
+```bash
+yue2 validate --request examples/song.json
+yue2 validate --input requests/all.jsonl --output outputs/preflight.json
+```
+
 ## Save and inspect a plan before synthesis
 
 ```python

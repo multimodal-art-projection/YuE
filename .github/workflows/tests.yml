@@ -32,6 +32,7 @@ jobs:
           yue2 --help
           yue2 generate --help
           yue2 batch --help
+          yue2 validate --help
           yue2 doctor
       - name: Run tests without model downloads
         run: python -m pytest -q

@@ -30,6 +30,12 @@ def test_cli_rejects_commands_not_in_the_public_package(command):
     assert exc.value.code == 2
 
 
+def test_cli_exposes_validate_without_model_flags():
+    args = cli.parser().parse_args(["validate", "--style", "piano", "--lyrics", "line"])
+    assert args.command == "validate"
+    assert not hasattr(args, "model")
+
+
 def test_pipeline_defaults_and_explicit_revisions_reach_hub(monkeypatch, tmp_path):
     resolved = []
 

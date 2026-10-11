@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import time
 from .storage import write_json, verify_result, identity
+from .validate import request_kwargs, validate_command
 
 
 def kit_root():
@@ -35,26 +36,6 @@ def get_pipe(args):
              local_files_only=args.offline, generation_config=config,
              vae_core_frames=512 if args.budget <= 12 else 1024,
              progress=not getattr(args, "quiet", False))
-
-
-def request_kwargs(data, base=Path.cwd()):
-    allowed = {"style", "tags", "lyrics", "cot", "seed", "abc", "cfg_scale", "id", "abc_sampling", "semantic_sampling"}
-    metadata = {"lang", "eval_index", "clip_id", "prompt"}
-    unknown = set(data) - allowed - metadata - {"abc_path"}
-    if unknown:
-        raise ValueError(f"Unknown request fields: {sorted(unknown)}")
-    result = {k: v for k, v in data.items() if k in allowed}
-    if "abc_path" in data:
-        if data.get("abc") is not None:
-            raise ValueError("Pass abc or abc_path, not both")
-        result["abc"] = (base / data["abc_path"]).read_bytes().decode("utf-8")
-    if data.get("prompt") is not None:
-        from .protocol import SongRequest
-        request = SongRequest(style=result.get("style", result.get("tags")), lyrics=result["lyrics"],
-                              cot=result.get("cot", "full"))
-        if data["prompt"] != request.text():
-            raise ValueError("Historical literal prompt does not match native instruction/style/lyrics")
-    return result
 
 
 def doctor(args):
@@ -220,13 +201,28 @@ def parser():
                 q.add_argument("--seed", type=int)
                 q.add_argument("--cfg-scale", type=float)
                 q.add_argument("--stage", choices=("plan", "audio"), default="audio")
+    check = sub.add_parser("validate", help="Check request JSON or batch JSONL without loading models")
+    check.add_argument("--request")
+    check.add_argument("--input", help="JSONL batch; each line is one request object")
+    check.add_argument("--id")
+    check.add_argument("--style")
+    check.add_argument("--lyrics")
+    check.add_argument("--lyrics-file")
+    check.add_argument("--abc-file")
+    check.add_argument("--cot", choices=("full", "melody", "off"))
+    check.add_argument("--seed", type=int)
+    check.add_argument("--cfg-scale", type=float)
+    check.add_argument("--output", help="Write the JSON report to this path")
+    check.add_argument("--strict", action="store_true",
+                       help="Treat empty text or missing [Section] lyric tags as failures")
     return p
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parser().parse_args(argv)
-    return {"doctor": doctor, "generate": generate, "batch": batch}[args.command](args)
+    return {"doctor": doctor, "generate": generate, "batch": batch,
+            "validate": validate_command}[args.command](args)
 
 
 if __name__ == "__main__":
