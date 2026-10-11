@@ -100,6 +100,44 @@ class SongResult:
         sf.write(path, self.audio, self.sample_rate, subtype="PCM_24" if path.suffix.lower() == ".flac" else "FLOAT")
         return str(path)
 
+    @classmethod
+    def load(cls, directory, *, expected_identity=None):
+        """Restore verified native artifacts without loading generation models.
+
+        Audio is the stored PCM24 FLAC waveform, not the pre-save float array.
+        Hash verification checks the receipt, not independent provenance or quality.
+        """
+        import soundfile as sf
+        from .storage import verify_result
+        directory = Path(directory)
+        result = verify_result(directory, expected_identity)
+        plan = SymbolicPlan.load(directory)
+        request = json.loads((directory / "request.json").read_text(encoding="utf-8"))
+        if request != plan.request.to_dict():
+            raise ValueError("Saved request does not match the symbolic plan")
+        tokens = np.load(directory / "semantic.npy", allow_pickle=False)
+        if tokens.ndim != 1 or tokens.dtype.kind not in "iu":
+            raise ValueError("Invalid saved semantic token array")
+        latents = np.load(directory / "latent.npy", allow_pickle=False)
+        valid_layout = ((latents.ndim == 2 and latents.shape[1] == 64 and latents.shape[0] > 0)
+                        or (latents.ndim == 3 and latents.shape[:2] == (1, 64) and latents.shape[2] > 0))
+        if not valid_layout or latents.dtype.kind != "f" or not np.isfinite(latents).all():
+            raise ValueError("Invalid saved finite latent array")
+        audio, sample_rate = sf.read(directory / "audio.flac", dtype="float32", always_2d=True)
+        if (audio.shape[1] != 2 or len(audio) < 1 or not np.isfinite(audio).all()
+                or sample_rate != result["sample_rate"]
+                or len(audio) / sample_rate != result["audio_seconds"]):
+            raise ValueError("Saved audio does not match result metadata")
+        truncated = result["truncated"]
+        if (truncated.get("abc") is not plan.truncated
+                or not isinstance(truncated.get("semantic"), bool)):
+            raise ValueError("Saved truncation flags do not match the plan")
+        config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
+        semantic = SemanticResult(plan, tokens.tolist(), result["timing"].get("semantic", {}),
+                                  truncated["semantic"])
+        return cls(audio, sample_rate, semantic, latents, config, result["weights"],
+                   result["timing"], result["identity"])
+
     def save_artifacts(self, directory):
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)

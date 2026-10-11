@@ -56,6 +56,10 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 
 `from_pretrained` accepts local model directories, `revision`, `vae_revision`, `cache_dir`, and `local_files_only=True`. Pin model and VAE revisions for comparisons. Separate GPUs, runtime versions, or sampling settings can change a seeded generation.
 
+## Reopen a saved result in Python
+
+Use `SongResult.load("runs/default/song", expected_identity=known_identity)` to verify a native run and restore its exact saved plan, semantic tokens, latents, configuration, weight identity and timings without model initialization. The optional identity rejects a different request; the loader also checks array layouts, finite audio/latents, request/plan agreement and waveform metadata. Its audio is the stored PCM24 FLAC waveform, which may differ from the original float waveform before saving. Call `result.save("review.wav")` or analyze the arrays directly. Receipt verification does not authenticate provenance, prevent concurrent filesystem mutation or assess audio quality.
+
 ## Listening and evaluation decoders
 
 | Decoder | Use |
