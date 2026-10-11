@@ -78,8 +78,8 @@ def doctor(args):
               "validated": False, "note": "Environment readiness is not quality or real-24GB acceptance."}
     if args.verify_hashes:
         from .storage import resolve_model
-        report["weights"] = {"model": model_identity(resolve_model(model, local_files_only=args.offline)),
-                             "vae": model_identity(resolve_model(vae, local_files_only=args.offline))}
+        report["weights"] = {"model": model_identity(resolve_model(model, revision=args.revision, local_files_only=args.offline)),
+                             "vae": model_identity(resolve_model(vae, revision=args.vae_revision, local_files_only=args.offline))}
     if args.output:
         write_json(args.output, report)
     print(json.dumps(report, indent=2, ensure_ascii=False))
