@@ -125,8 +125,10 @@ def model_identity(path, verify=True):
 
 def collect_hashes(directory, exclude=("result.json",)):
     directory = Path(directory)
-    return {str(p.relative_to(directory)): {"sha256": sha256_file(p), "bytes": p.stat().st_size}
-            for p in sorted(directory.rglob("*")) if p.is_file() and p.name not in exclude}
+    excluded = {Path(name).as_posix() for name in exclude}
+    return {p.relative_to(directory).as_posix(): {"sha256": sha256_file(p), "bytes": p.stat().st_size}
+            for p in sorted(directory.rglob("*"))
+            if p.is_file() and p.relative_to(directory).as_posix() not in excluded}
 
 
 def verify_result(directory, expected_identity=None):
