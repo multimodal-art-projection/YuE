@@ -13,6 +13,7 @@ import json
 import math
 import os
 from pathlib import Path
+import queue as _queue
 import selectors
 import signal
 import subprocess
@@ -324,7 +325,8 @@ def _stop_process(process):
 
 class _Worker:
     def __init__(self, pipe):
-        self.lock = threading.Lock()
+        self.requests = {}
+        self.write_lock = threading.Lock()
         self.temp = tempfile.TemporaryDirectory(prefix="yue2-vllm-")
         self.log_path = Path(self.temp.name) / "worker.log"
         self.log = self.log_path.open("w+")
@@ -349,47 +351,89 @@ class _Worker:
         self.buffer = b""
         self._send({"model_dir": str(pipe.model_dir), "device": str(pipe.device),
                     "memory_budget_gib": pipe.memory_budget_gib})
+        self.dispatcher = threading.Thread(target=self._dispatch, daemon=True)
+        self.dispatcher.start()
 
     def _send(self, value):
-        self.process.stdin.write((json.dumps(value) + "\n").encode())
-        self.process.stdin.flush()
+        with self.write_lock:
+            self.process.stdin.write((json.dumps(value) + "\n").encode())
+            self.process.stdin.flush()
 
-    def request(self, payload, cancelled=None, on_token=None):
-        with self.lock:
-            self._send(payload)
+    def _dispatch(self):
+        """Route worker events to per-request queues; id-less events are fatal."""
+        try:
             while True:
-                if cancelled is not None and cancelled():
-                    self.close()
-                    raise InterruptedError("Cancelled during vLLM AR generation")
-                if self.selector.select(timeout=.1):
+                try:
+                    ready = self.selector.select(timeout=.5)
+                except ValueError:
+                    # close() shut the selector under a slow drain; pending
+                    # requests are failed by the finally below.
+                    break
+                if ready:
                     block = os.read(self.process.stdout.fileno(), 65536)
                     if not block:
                         break
                     self.buffer += block
                     while b"\n" in self.buffer:
                         raw, self.buffer = self.buffer.split(b"\n", 1)
-                        line = raw.decode(errors="replace")
-                        if not line.startswith(WIRE):
-                            self.log.write(line + "\n")
-                            continue
-                        event = json.loads(line[len(WIRE):])
-                        if event.get("error"):
-                            self.close()
-                            raise RuntimeError(event["error"])
-                        if event.get("event") == "token" and on_token is not None:
-                            on_token(payload["phase"], event["token"])
-                        if event.get("event") == "result":
-                            return event["ids"], event["timing"], event["truncated"]
-                if self.process.poll() is not None and not self.selector.select(timeout=0):
-                    break
-            self.log.flush()
-            details = self.log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
-            self.close()
-            raise RuntimeError(f"vLLM worker exited without a result: {details}")
+                        self._dispatch_line(raw.decode(errors="replace"))
+        finally:
+            self._fail_pending("vLLM worker exited without a result")
+
+    def _dispatch_line(self, line):
+        if not line.startswith(WIRE):
+            self.log.write(line + "\n")
+            return
+        event = json.loads(line[len(WIRE):])
+        entry = self.requests.get(event.get("id")) if event.get("id") else None
+        if entry is None:
+            if event.get("error"):
+                self.log.write(line + "\n")
+                self._fail_pending(event["error"])
+            return
+        entry["queue"].put(event)
+
+    def _fail_pending(self, error):
+        for entry in self.requests.values():
+            entry["queue"].put({"error": error})
+
+    def request(self, payload, cancelled=None, on_token=None):
+        rid = uuid.uuid4().hex
+        entry = {"queue": _queue.Queue()}
+        self.requests[rid] = entry
+        try:
+            self._send({**payload, "id": rid})
+            while True:
+                if cancelled is not None and cancelled():
+                    # This caller alone is cancelled; the shared worker stays up.
+                    raise InterruptedError("Cancelled during vLLM AR generation")
+                try:
+                    event = entry["queue"].get(timeout=.1)
+                except _queue.Empty:
+                    if self.process.poll() is not None:
+                        break
+                    continue
+                if event.get("event") == "token" and on_token is not None:
+                    on_token(payload["phase"], event["token"])
+                if event.get("event") == "result":
+                    return event["ids"], event["timing"], event["truncated"]
+                if event.get("error"):
+                    self.log.flush()
+                    details = self.log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
+                    raise RuntimeError(f"{event['error']}\n{details}")
+        finally:
+            self.requests.pop(rid, None)
+        self.log.flush()
+        details = self.log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
+        self.close()
+        raise RuntimeError(f"vLLM worker exited without a result: {details}")
 
     def close(self):
         _stop_process(self.process)
         self.finalizer.detach()
+        # Let the dispatcher leave select() before its selector is closed;
+        # otherwise the daemon thread can touch a dead epoll handle.
+        self.dispatcher.join(timeout=2)
         self.selector.close()
         for stream in (self.process.stdin, self.process.stdout, self.log):
             if stream is not None and not stream.closed:
@@ -445,15 +489,24 @@ def generate_vllm(pipe, prefix, sampling, seed, phase, negative=None, cfg_scale=
         pipe._vllm_worker = _Worker(pipe)
     payload = {"prefix": list(prefix), "sampling": dataclasses.asdict(sampling),
                "seed": seed, "phase": phase, "stream_tokens": on_token is not None}
-    try:
-        return pipe._vllm_worker.request(payload, cancelled, on_token)
-    except BaseException:
-        close_vllm(pipe)
-        raise
+    # Per-request errors and cancellation leave the shared worker running;
+    # _Worker.request closes it only when the transport itself is broken.
+    return pipe._vllm_worker.request(payload, cancelled, on_token)
 
 
 def _emit(value):
     print(WIRE + json.dumps(value), flush=True)
+
+
+async def _serve_request(handler, request):
+    """Run one request handler as a task; a failure is a terminal error
+    event for that request alone, never a silent task death that leaves
+    the client waiting and the worker appearing alive."""
+    try:
+        await handler(request)
+    except Exception as error:
+        _emit({"id": request.get("id"), "event": "error",
+               "error": f"{type(error).__name__}: {error}"})
 
 
 async def _worker_main():
@@ -477,13 +530,16 @@ async def _worker_main():
     props = torch.xpu if device.type == "xpu" else torch.cuda
     total = props.get_device_properties(0).total_memory
     budget = min(setup["memory_budget_gib"] * 2**30, total)
-    kv_bytes = kv_cache_bytes(config)
+    max_seqs = int(os.environ.get("YUE2_VLLM_MAX_SEQS", "1"))
+    if not 1 <= max_seqs <= 16:
+        raise ValueError("YUE2_VLLM_MAX_SEQS must be in 1..16")
+    kv_bytes = kv_cache_bytes(config, max_sequences=max_seqs)
     weights_bytes = (derived / "model.safetensors").stat().st_size
     if kv_bytes + weights_bytes + 3 * 2**30 > budget:
         raise MemoryError("Requested vLLM memory budget cannot fit full-context BF16 AR+KV+3GiB reserve")
     load_start = time.perf_counter()
     args = AsyncEngineArgs(model=str(derived), skip_tokenizer_init=True, dtype="bfloat16",
-                           max_model_len=CONTEXT, max_num_seqs=1, max_num_batched_tokens=2048,
+                           max_model_len=CONTEXT, max_num_seqs=max_seqs, max_num_batched_tokens=2048,
                            enable_chunked_prefill=True, enable_prefix_caching=True,
                            kv_cache_memory_bytes=kv_bytes,
                            gpu_memory_utilization=min(.9, (budget - 2 * 2**30) / total),
@@ -496,43 +552,51 @@ async def _worker_main():
     engine = AsyncLLM.from_engine_args(args)
     load_seconds = time.perf_counter() - load_start
 
+    async def handle(request):
+        nonlocal load_seconds
+        sampling = Sampling(**request["sampling"])
+        abc = request["phase"] == "abc"
+        end = ABC_END if abc else MUSIC_END
+        params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
+                   top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
+                   max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
+                   allowed_token_ids=_allowed_token_ids(request["phase"], v2), detokenize=False,
+                   extra_args=_sampling_extra_args(sampling, request["phase"], v2))
+        start, first, output, sent = time.perf_counter(), None, None, 0
+        rid = request["id"]
+        async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, rid):
+            output = result.outputs[0]
+            if output.token_ids and first is None:
+                first = time.perf_counter() - start
+            if request["stream_tokens"]:
+                for token in output.token_ids[sent:]:
+                    _emit({"id": rid, "event": "token", "token": int(token)})
+                sent = len(output.token_ids)
+        if output is None:
+            raise RuntimeError("vLLM returned no output")
+        ids = list(output.token_ids)
+        ended = bool(ids and ids[-1] == end) or output.stop_reason == end
+        if ids and ids[-1] == end:
+            ids.pop()
+        elapsed = time.perf_counter() - start
+        count = len(ids) + int(ended)
+        _emit({"id": rid, "event": "result", "ids": ids, "truncated": not ended,
+               "timing": {"seconds": elapsed, "ttft_seconds": first,
+                   "output_tokens": count, "content_tokens": len(ids), "output_tps": count / elapsed,
+                   "prefix_tokens": len(request["prefix"]), "cfg_branches": 1,
+                   "backend_actual": "vllm", "backend_requested": "vllm",
+                   "engine_load_seconds": load_seconds, "kv_cache_memory_bytes": kv_bytes,
+                   "ar_derivation_identity": derived.name, "max_num_seqs": max_seqs}})
+        load_seconds = 0.
+
     try:
         while line := await asyncio.to_thread(sys.stdin.readline):
             request = json.loads(line)
-            sampling = Sampling(**request["sampling"])
-            abc = request["phase"] == "abc"
-            end = ABC_END if abc else MUSIC_END
-            params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
-                       top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
-                       max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
-                       allowed_token_ids=_allowed_token_ids(request["phase"], v2), detokenize=False,
-                       extra_args=_sampling_extra_args(sampling, request["phase"], v2))
-            start, first, output, sent = time.perf_counter(), None, None, 0
-            async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, str(uuid.uuid4())):
-                output = result.outputs[0]
-                if output.token_ids and first is None:
-                    first = time.perf_counter() - start
-                if request["stream_tokens"]:
-                    for token in output.token_ids[sent:]:
-                        _emit({"event": "token", "token": int(token)})
-                    sent = len(output.token_ids)
-            if output is None:
-                raise RuntimeError("vLLM returned no output")
-            ids = list(output.token_ids)
-            ended = bool(ids and ids[-1] == end) or output.stop_reason == end
-            if ids and ids[-1] == end:
-                ids.pop()
-            elapsed = time.perf_counter() - start
-            count = len(ids) + int(ended)
-            _emit({"event": "result", "ids": ids, "truncated": not ended,
-                   "timing": {"seconds": elapsed, "ttft_seconds": first,
-                       "output_tokens": count, "content_tokens": len(ids), "output_tps": count / elapsed,
-                       "prefix_tokens": len(request["prefix"]), "cfg_branches": 1,
-                       "backend_actual": "vllm", "backend_requested": "vllm",
-                       "engine_load_seconds": load_seconds, "kv_cache_memory_bytes": kv_bytes,
-                       "ar_derivation_identity": derived.name, "max_num_seqs": 1}})
-            load_seconds = 0.
+            asyncio.create_task(_serve_request(handle, request))
     finally:
+        pending = [t for t in asyncio.all_tasks() - {asyncio.current_task()} if not t.done()]
+        if pending:
+            await asyncio.wait(pending)
         engine.shutdown()
 
 

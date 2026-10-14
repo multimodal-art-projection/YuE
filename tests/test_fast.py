@@ -104,8 +104,9 @@ import sys,json
 json.loads(sys.stdin.readline())
 for line in sys.stdin:
     q=json.loads(line)
-    lines=['YUE2_FAST\\t'+json.dumps({'event':'token','token':i}) for i in range(100)]
-    lines.append('YUE2_FAST\\t'+json.dumps({'event':'result','ids':[12], 'timing':{},'truncated':False}))
+    i=q['id']
+    lines=['YUE2_FAST\\t'+json.dumps({'id':i,'event':'token','token':n}) for n in range(100)]
+    lines.append('YUE2_FAST\\t'+json.dumps({'id':i,'event':'result','ids':[12], 'timing':{},'truncated':False}))
     sys.stdout.write('\\n'.join(lines)+'\\n'); sys.stdout.flush()
 """
     monkeypatch.setattr(fast.subprocess, "Popen", lambda command, **kwargs: original_popen([sys.executable, '-c', worker_code], **kwargs))
@@ -181,7 +182,7 @@ def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, v2, phase):
     monkeypatch.setattr(fast, "_v2_sampler_available", lambda: v2)
     monkeypatch.setattr(fast, "_emit", emitted.append)
     setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
-    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": phase, "stream_tokens": True}
+    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": phase, "stream_tokens": True, "id": "test-req"}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
     asyncio.run(fast._worker_main())
 
@@ -195,8 +196,10 @@ def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, v2, phase):
                    list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE)) + [fast.MUSIC_END])
         assert params.allowed_token_ids == allowed
         assert fast.PHASE not in params.extra_args
-    assert [event["event"] for event in emitted] == ["token", "result"]
-    assert emitted[-1]["ids"] == [] and not emitted[-1]["truncated"]
+    results = [e for e in emitted if e.get("event") == "result"]
+    assert len(results) == 1
+    assert results[0]["ids"] == [] and not results[0]["truncated"]
+    assert results[0]["id"] == "test-req"
     assert stopped == [True]
 
 
@@ -338,8 +341,8 @@ def test_worker_drains_short_pipe_reads_before_treating_child_exit_as_failure(mo
 import json, sys
 json.loads(sys.stdin.readline())
 for line in sys.stdin:
-    json.loads(line)
-    print('YUE2_FAST\t' + json.dumps({'event':'result','ids':list(range(1000)),
+    request = json.loads(line)
+    print('YUE2_FAST\t' + json.dumps({'id':request['id'],'event':'result','ids':list(range(1000)),
                                      'timing':{'fixture':True},'truncated':False}),flush=True)
     if sys.argv[1] == 'exit': break
 """
@@ -461,7 +464,8 @@ def test_worker_params_follow_forced_v1_runner(monkeypatch, tmp_path):
     monkeypatch.setattr(fast, "_emit", emitted.append)
 
     setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
-    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": "semantic", "stream_tokens": False}
+    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": "semantic", "stream_tokens": False,
+               "id": "forced-v1"}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
     asyncio.run(fast._worker_main())
 
@@ -470,3 +474,166 @@ def test_worker_params_follow_forced_v1_runner(monkeypatch, tmp_path):
     assert fast.PHASE not in params.extra_args
     assert params.allowed_token_ids == (list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE))
                                         + [fast.MUSIC_END])
+
+
+def test_failed_request_emits_one_error_and_sibling_completes(monkeypatch):
+    """A request whose engine call raises must produce exactly one
+    request-ID error event; an in-flight sibling still delivers its result."""
+    import asyncio
+    from yue2 import fast
+
+    emitted = []
+    monkeypatch.setattr(fast, "_emit", lambda value: emitted.append(value))
+
+    async def handle(request):
+        if request["id"] == "boom":
+            raise RuntimeError("engine raised mid-generation")
+        for token in (11, 12):
+            fast._emit({"id": request["id"], "event": "token", "token": token})
+        fast._emit({"id": request["id"], "event": "result", "ids": [11, 12],
+                    "timing": {"fixture": True}, "truncated": False})
+
+    async def main():
+        await asyncio.gather(fast._serve_request(handle, {"id": "boom"}),
+                             fast._serve_request(handle, {"id": "okay"}))
+
+    asyncio.run(main())
+
+    errors = [e for e in emitted if e.get("event") == "error"]
+    results = [e for e in emitted if e.get("event") == "result"]
+    assert len(errors) == 1, emitted
+    assert errors[0]["id"] == "boom"
+    assert "engine raised mid-generation" in errors[0]["error"]
+    assert len(results) == 1 and results[0]["id"] == "okay"
+    tokens = [e for e in emitted if e.get("event") == "token"]
+    assert [t["id"] for t in tokens] == ["okay", "okay"]
+
+
+WORKER_MAIN_FIXTURE = r"""
+import asyncio, json, os, sys
+from pathlib import Path
+from types import SimpleNamespace
+import torch
+from yue2 import fast
+
+class Engine:
+    @staticmethod
+    def from_engine_args(args):
+        return Engine()
+
+    async def generate(self, prompt, params, request_id):
+        if prompt["prompt_token_ids"][:1] == [0]:
+            # one real token, then a mid-generation engine failure
+            yield SimpleNamespace(outputs=[SimpleNamespace(token_ids=[7], stop_reason=None)])
+            raise RuntimeError("engine raised mid-generation")
+        yield SimpleNamespace(outputs=[SimpleNamespace(token_ids=[11, 12], stop_reason=None)])
+        yield SimpleNamespace(outputs=[SimpleNamespace(
+            token_ids=[11, 12, fast.MUSIC_END], stop_reason=None)])
+
+    def shutdown(self):
+        pass
+
+class Args(SimpleNamespace):
+    @staticmethod
+    def create_engine_config():
+        return SimpleNamespace()  # predates the runner property
+
+sys.modules["vllm"] = SimpleNamespace(__version__="0.19.0",
+    SamplingParams=lambda **kwargs: SimpleNamespace(**kwargs))
+sys.modules["vllm.engine.arg_utils"] = SimpleNamespace(AsyncEngineArgs=Args)
+sys.modules["vllm.v1.engine.async_llm"] = SimpleNamespace(AsyncLLM=Engine)
+fast.derive_ar_checkpoint = lambda path: Path(os.environ["YUE2_TEST_CKPT"])
+torch.cuda.get_device_properties = lambda index: SimpleNamespace(total_memory=24 * 2**30)
+fast._v2_sampler_available = lambda: False
+asyncio.run(fast._worker_main())
+"""
+
+
+def _fixture_worker(monkeypatch, tmp_path, child_code):
+    make_checkpoint(tmp_path / "model")
+    original_popen = subprocess.Popen
+    monkeypatch.setattr(fast.subprocess, "Popen",
+        lambda command, **kwargs: original_popen([sys.executable, "-c", child_code], **kwargs))
+    monkeypatch.setenv("YUE2_VLLM_VERSION", "0.19.0")
+    monkeypatch.setenv("YUE2_TEST_CKPT", str(tmp_path / "model"))
+    pipe = SimpleNamespace(model_dir=Path('.'), device=torch.device('cpu'), memory_budget_gib=24)
+    return fast._Worker(pipe)
+
+
+def test_worker_main_error_reaches_only_its_request_or_caller(monkeypatch, tmp_path):
+    """Full path integration: real _worker_main -> stdout -> dispatcher ->
+    per-request queues. An engine failure after emitting a token must surface
+    as exactly one terminal error to its caller; a concurrent sibling request
+    completes, and the shared worker process stays alive."""
+    import concurrent.futures
+
+    worker = _fixture_worker(monkeypatch, tmp_path, WORKER_MAIN_FIXTURE)
+    tokens = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            failing = pool.submit(worker.request,
+                {"prefix": [0], "sampling": {}, "seed": 1, "phase": "semantic",
+                 "stream_tokens": True},
+                None, lambda phase, token: tokens.append(("fail", token)))
+            passing = pool.submit(worker.request,
+                {"prefix": [1], "sampling": {}, "seed": 2, "phase": "semantic",
+                 "stream_tokens": True},
+                None, lambda phase, token: tokens.append(("ok", token)))
+
+            with pytest.raises(RuntimeError, match="engine raised mid-generation"):
+                failing.result()
+            ids, timing, truncated = passing.result()
+            assert ids == [11, 12] and not truncated
+
+        # the failing caller saw its one streamed token before the terminal error
+        assert tokens.count(("fail", 7)) == 1
+        assert sorted(t for tag, t in tokens if tag == "ok")[:3] == [11, 12, fast.MUSIC_END]
+        # a per-request engine failure does not kill the shared worker
+        assert worker.process.poll() is None
+    finally:
+        worker.close()
+
+
+ECHO_FIXTURE = r"""
+import json, sys
+json.loads(sys.stdin.readline())
+for line in sys.stdin:
+    q = json.loads(line)
+    rid = q.get("id")
+    for token in range(200):
+        print("YUE2_FAST\t" + json.dumps({"id": rid, "event": "token", "token": token}), flush=True)
+    print("YUE2_FAST\t" + json.dumps({"id": rid, "event": "result", "ids": [12],
+                                     "timing": {}, "truncated": False}), flush=True)
+"""
+
+
+def test_worker_concurrent_writes_do_not_corrupt_framing(monkeypatch, tmp_path):
+    """Concurrent request() callers share one stdin; writes must be serialized
+    or the worker sees interleaved (unparseable) JSON lines."""
+    import concurrent.futures
+
+    worker = _fixture_worker(monkeypatch, tmp_path, ECHO_FIXTURE)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(worker.request,
+                                   {"phase": "abc", "marker": index},
+                                   None, lambda phase, token, index=index: None)
+                       for index in range(4)]
+            for future in futures:
+                assert future.result()[0] == [12]
+        assert worker.process.poll() is None
+    finally:
+        worker.close()
+
+
+def test_worker_cancellation_fails_only_the_cancelled_caller(monkeypatch, tmp_path):
+    """Cancelling one caller must not close the shared worker."""
+    worker = _fixture_worker(monkeypatch, tmp_path, ECHO_FIXTURE)
+    try:
+        with pytest.raises(InterruptedError, match="Cancelled during vLLM"):
+            worker.request({"phase": "abc"}, cancelled=lambda: True)
+        assert worker.process.poll() is None
+        # the cancelled payload's late result is dropped, and the worker still serves
+        assert worker.request({"phase": "abc"})[0] == [12]
+    finally:
+        worker.close()
