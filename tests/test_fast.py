@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import numpy as np
 from pathlib import Path
 import subprocess
 import sys
@@ -68,8 +69,10 @@ def test_missing_ar_tensor_fails(tmp_path):
 
 def test_full_context_kv_budget():
     config = YuE2Config().to_dict()
-    assert fast.kv_cache_bytes(config) == int(2.625 * 2**30)
-    assert fast.kv_cache_bytes(config, max_sequences=2) == int(5.25 * 2**30)
+    # 24576 context plus the 256-token headroom the vLLM admission check
+    # needs, rounded to 16-token blocks.
+    assert fast.kv_cache_bytes(config) == 24832 * 28 * 2 * 8 * 128 * 2
+    assert fast.kv_cache_bytes(config, max_sequences=2) == 2 * 24832 * 28 * 2 * 8 * 128 * 2
 
 
 @pytest.mark.parametrize("cfg,legacy,reason", [(1.01, True, "paired_cfg_uses_torch"),
@@ -133,7 +136,24 @@ def test_fp8_cpu_rejected():
         quant.prepare_fp8_ar(torch.nn.Linear(32, 32), "cpu")
 
 
-@pytest.mark.skipif(importlib.util.find_spec('vllm') is None, reason='Optional vLLM package is not installed')
+_v2_sampler_available = fast._v2_sampler_available
+
+
+def test_stage_vocabulary_restriction_kept_on_v1_sampler():
+    from types import SimpleNamespace
+    sampling = SimpleNamespace(repetition_penalty=1.2, penalty_window=40)
+    # V1: allowed_token_ids carries the stage range; no phase hint is sent.
+    assert fast._allowed_token_ids("abc", v2=False) == list(range(fast.EOD)) + [fast.ABC_END]
+    assert fast._allowed_token_ids("semantic", v2=False) == (
+        list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE)) + [fast.MUSIC_END])
+    assert fast.PHASE not in fast._sampling_extra_args(sampling, "abc", v2=False)
+    # V2: the phase mask in the logits processor restricts instead.
+    assert fast._allowed_token_ids("abc", v2=True) is None
+    assert fast._sampling_extra_args(sampling, "semantic", v2=True)[fast.PHASE] == "semantic"
+
+
+@pytest.mark.skipif(importlib.util.find_spec('vllm') is None or _v2_sampler_available(),
+                    reason='Optional vLLM package or its model-runner V1 sampler is not installed')
 def test_window_processor_counting_and_request_moves():
     cls = fast.WindowedPenalty
     processor = cls(SimpleNamespace(scheduler_config=SimpleNamespace(max_num_seqs=2)), 'cpu', False)
@@ -148,6 +168,37 @@ def test_window_processor_counting_and_request_moves():
     torch.testing.assert_close(processor.apply(logits.clone()), actual.flip(0))
     processor.update_state(SimpleNamespace(removed=[0], added=[], moved=[(1, 0, SimpleNamespace(name='UNIDIRECTIONAL'))]))
     torch.testing.assert_close(processor.apply(logits[:1].clone()), actual[:1])
+
+
+@pytest.mark.skipif(not _v2_sampler_available(), reason='vLLM model-runner V2 sampler is not installed')
+def test_window_processor_v2_reads_committed_tokens():
+    cls = fast.WindowedPenalty
+    vocab = fast.CODEC_OFFSET + fast.CODEC_SIZE
+    req_states = SimpleNamespace(
+        device=torch.device("cpu"), max_num_reqs=2, vocab_size=vocab,
+        all_token_ids=SimpleNamespace(gpu=torch.tensor([[2, 2, 3], [1, 0, 0]])),
+        prompt_len=SimpleNamespace(cpu=torch.tensor([0, 0])),
+        prefill_len=SimpleNamespace(cpu=torch.tensor([0, 0])),
+        total_len=SimpleNamespace(gpu=torch.tensor([3, 1])))
+    processor = cls(SimpleNamespace(), req_states)
+    with pytest.raises(ValueError):
+        cls.validate_params(SimpleNamespace(extra_args={fast.PENALTY: 0.}))
+    assert processor.add_request(0, SimpleNamespace(extra_args={fast.PENALTY: 2., fast.WINDOW: 3}))
+    assert processor.add_request(1, SimpleNamespace(extra_args={fast.PENALTY: 3., fast.WINDOW: 2}))
+    logits = torch.tensor([[0., 9., 12., -2.], [0., 9., 12., -2.]])
+    ctx = SimpleNamespace(idx_mapping_np=np.array([0, 1]))
+    actual = processor.apply(logits.clone(), ctx)
+    torch.testing.assert_close(actual, torch.tensor([[0., 9., 3., -4.], [0., 3., 12., -2.]]))
+    # A recycled slot is fully reinitialized by its next occupant: a neutral
+    # penalty disables the adjustment for that row from then on.
+    assert not processor.add_request(1, SimpleNamespace(extra_args={fast.PENALTY: 1.}))
+    torch.testing.assert_close(processor.apply(logits.clone(), ctx)[1], logits[1])
+    # The yue2_phase mask keeps only each stage's range plus its end token.
+    assert processor.add_request(0, SimpleNamespace(extra_args={fast.PENALTY: 1., fast.PHASE: "abc"}))
+    row = torch.zeros(1, vocab)
+    out = processor.apply(row.clone(), SimpleNamespace(idx_mapping_np=np.array([0])))[0]
+    assert out[fast.EOD - 1] == 0 and out[fast.ABC_END] == 0
+    assert torch.isinf(out[fast.EOD:fast.ABC_END]).all() and torch.isinf(out[fast.ABC_END + 1:]).all()
 
 
 def test_fp8_ar_selection_idempotence_and_exact_restore(monkeypatch):

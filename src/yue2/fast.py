@@ -27,7 +27,7 @@ from .protocol import ABC_END, CODEC_OFFSET, CODEC_SIZE, CONTEXT, EOD, MUSIC_END
 from .storage import identity, model_identity, sha256_file, write_json
 
 WIRE = "YUE2_FAST\t"
-PENALTY, WINDOW = "yue2_window_penalty", "yue2_penalty_window"
+PENALTY, WINDOW, PHASE = "yue2_window_penalty", "yue2_penalty_window", "yue2_phase"
 
 
 def ar_keys(config):
@@ -111,8 +111,34 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
     return target
 
 
+def _v2_sampler_available():
+    try:
+        import vllm.v1.worker.gpu.sample.logits_processor  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _sampling_extra_args(sampling, phase, v2):
+    extra = {PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window}
+    if v2:
+        extra[PHASE] = phase
+    return extra
+
+
+def _allowed_token_ids(phase, v2):
+    """Vocabulary restriction per stage: phase masks on the V2 model-runner
+    sampler, allowed_token_ids on the V1 sampler (which has no 1024-id cap)."""
+    if v2:
+        return None
+    if phase == "abc":
+        return list(range(EOD)) + [ABC_END]
+    return list(range(CODEC_OFFSET, CODEC_OFFSET + CODEC_SIZE)) + [MUSIC_END]
+
+
 def kv_cache_bytes(config, max_sequences=1, context=CONTEXT, block_size=16):
-    positions = math.ceil(context / block_size) * block_size
+    # vLLM's admission check adds per-request pages beyond the raw context.
+    positions = math.ceil((context + 256) / block_size) * block_size
     return positions * max_sequences * config["num_hidden_layers"] * 2 * config["num_key_value_heads"] * config["head_dim"] * 2
 
 
@@ -120,6 +146,68 @@ def __getattr__(name):
     if name != "WindowedPenalty":
         raise AttributeError(name)
     # vLLM resolves this FQCN only inside its optional worker processes.
+    try:
+        from vllm.v1.worker.gpu.sample.logits_processor import LogitsProcessor
+    except ImportError:
+        LogitsProcessor = None
+    if LogitsProcessor is not None:
+        # Model-runner V2 interface: committed tokens live on device, so the
+        # windowed penalty reads req_states directly instead of mirroring.
+        import torch
+
+        class WindowedPenalty(LogitsProcessor):
+            def __init__(self, vllm_config, req_states):
+                self.state = req_states
+                self.slots = {}
+                # vLLM caps allowed_token_ids at 1024, and each stage's allowed
+                # set is a contiguous range plus its end token anyway: express
+                # it as a precomputed additive mask applied before the penalty.
+                vocab = req_states.vocab_size
+                device = req_states.device
+                abc_mask = torch.zeros(vocab, dtype=torch.float32, device=device)
+                abc_mask[EOD:] = float("-inf")
+                abc_mask[ABC_END] = 0.
+                semantic_mask = torch.zeros(vocab, dtype=torch.float32, device=device)
+                semantic_mask[:CODEC_OFFSET] = float("-inf")
+                semantic_mask[CODEC_OFFSET + CODEC_SIZE:] = float("-inf")
+                semantic_mask[MUSIC_END] = 0.
+                self.phase_masks = {"abc": abc_mask, "semantic": semantic_mask}
+
+            @classmethod
+            def validate_params(cls, params):
+                extra = params.extra_args or {}
+                if not 0 < float(extra.get(PENALTY, 1)) or not 1 <= int(extra.get(WINDOW, 50)) <= 100:
+                    raise ValueError("Invalid window penalty")
+
+            def add_request(self, req_idx, sampling_params):
+                extra = sampling_params.extra_args or {}
+                penalty = float(extra.get(PENALTY, 1.))
+                self.slots[req_idx] = (penalty, int(extra.get(WINDOW, 50)), extra.get(PHASE))
+                return penalty != 1. or extra.get(PHASE) is not None
+
+            def apply(self, logits, ctx):
+                for row, slot in enumerate(ctx.idx_mapping_np.tolist()):
+                    penalty, window, phase = self.slots.get(slot, (1., 50, None))
+                    if phase is not None:
+                        logits[row] += self.phase_masks[phase]
+                    if penalty == 1.:
+                        continue
+                    state = self.state
+                    total = int(state.total_len.gpu[slot])
+                    prompt = int(state.prefill_len.cpu[slot])
+                    if total <= prompt:
+                        continue  # prefill steps have no committed output yet
+                    recent = state.all_token_ids.gpu[slot, max(prompt, total - window):total]
+                    ids, counts = recent.unique(return_counts=True)
+                    multiplier = penalty ** counts.to(torch.float32)
+                    values = logits[row, ids.long()]
+                    logits[row, ids.long()] = torch.where(values < 0, values * multiplier, values / multiplier)
+                return logits
+
+        WindowedPenalty.__module__ = __name__
+        WindowedPenalty.__qualname__ = "WindowedPenalty"
+        globals()[name] = WindowedPenalty
+        return WindowedPenalty
     from vllm.v1.sample.logits_processor import LogitsProcessor
     import torch
     import triton
@@ -357,8 +445,9 @@ async def _worker_main():
         visible = os.environ.get("CUDA_VISIBLE_DEVICES")
         os.environ["CUDA_VISIBLE_DEVICES"] = visible.split(",")[device.index] if visible else str(device.index)
     import vllm
-    if vllm.__version__ != "0.19.0":
-        raise RuntimeError(f"This backend requires vllm==0.19.0, found {vllm.__version__}")
+    expected = os.environ.get("YUE2_VLLM_VERSION", "0.19.0")
+    if vllm.__version__ != expected:
+        raise RuntimeError(f"This backend requires vllm=={expected}, found {vllm.__version__}")
     from vllm import SamplingParams
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.v1.engine.async_llm import AsyncLLM
@@ -378,19 +467,55 @@ async def _worker_main():
                            gpu_memory_utilization=min(.9, (budget - 2 * 2**30) / total),
                            logits_processors=["yue2.fast:WindowedPenalty"], disable_log_stats=True)
     engine = AsyncLLM.from_engine_args(args)
+    v2 = _v2_sampler_available()
     load_seconds = time.perf_counter() - load_start
+
+    async def handle(request):
+        sampling = Sampling(**request["sampling"])
+        abc = request["phase"] == "abc"
+        end = ABC_END if abc else MUSIC_END
+        params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
+                   top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
+                   max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
+                   allowed_token_ids=_allowed_token_ids(request["phase"], v2), detokenize=False,
+                   extra_args=_sampling_extra_args(sampling, request["phase"], v2))
+        start, first, output, sent = time.perf_counter(), None, None, 0
+        rid = request["id"]
+        async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, rid):
+            output = result.outputs[0]
+            if output.token_ids and first is None:
+                first = time.perf_counter() - start
+            if request["stream_tokens"]:
+                for token in output.token_ids[sent:]:
+                    _emit({"id": rid, "event": "token", "token": int(token)})
+                sent = len(output.token_ids)
+        if output is None:
+            raise RuntimeError("vLLM returned no output")
+        ids = list(output.token_ids)
+        ended = bool(ids and ids[-1] == end) or output.stop_reason == end
+        if ids and ids[-1] == end:
+            ids.pop()
+        elapsed = time.perf_counter() - start
+        count = len(ids) + int(ended)
+        _emit({"id": rid, "event": "result", "ids": ids, "truncated": not ended,
+               "timing": {"seconds": elapsed, "ttft_seconds": first,
+                   "output_tokens": count, "content_tokens": len(ids), "output_tps": count / elapsed,
+                   "prefix_tokens": len(request["prefix"]), "cfg_branches": 1,
+                   "backend_actual": "vllm", "backend_requested": "vllm",
+                   "engine_load_seconds": load_seconds, "kv_cache_memory_bytes": kv_bytes,
+                   "ar_derivation_identity": derived.name, "max_num_seqs": max_seqs}})
     try:
         while line := await asyncio.to_thread(sys.stdin.readline):
             request = json.loads(line)
             sampling = Sampling(**request["sampling"])
             abc = request["phase"] == "abc"
             end = ABC_END if abc else MUSIC_END
-            allowed = list(range(EOD)) + [end] if abc else list(range(CODEC_OFFSET, CODEC_OFFSET + CODEC_SIZE)) + [end]
             params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
                        top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
                        max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
-                       allowed_token_ids=allowed, detokenize=False,
-                       extra_args={PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window})
+                       detokenize=False,
+                       extra_args={PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window,
+                                   PHASE: request["phase"]})
             start, first, output, sent = time.perf_counter(), None, None, 0
             async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, str(uuid.uuid4())):
                 output = result.outputs[0]
