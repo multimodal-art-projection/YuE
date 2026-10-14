@@ -77,7 +77,7 @@ def test_full_context_kv_budget():
 
 @pytest.mark.parametrize("cfg,legacy,reason", [(1.01, True, "paired_cfg_uses_torch"),
                                                (1., True, "historical_off_sampling_uses_torch"),
-                                               (1., False, "vllm_requires_cuda")])
+                                               (1., False, "vllm_requires_cuda_or_xpu")])
 def test_cfg_and_device_fallback_preserve_protocol(monkeypatch, cfg, legacy, reason):
     from yue2 import sampling
     calls, model = [], object()
