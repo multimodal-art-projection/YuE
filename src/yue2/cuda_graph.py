@@ -89,8 +89,8 @@ class GraphAR:
         if getattr(model, "_yue2_fp8_originals", None) or any(
                 not isinstance(module, torch.nn.Linear) or module.weight.dtype != self.dtype for module in linears):
             raise ValueError("GraphAR only supports unquantized standard AR Linear layers; use eager for FP8")
-        if capture and self.device.type != "cuda":
-            raise ValueError("CUDA graphs require a CUDA model; capture=False is for diagnostics")
+        if capture and self.device.type not in {"cuda", "xpu"}:
+            raise ValueError("Graph capture requires a CUDA or XPU model; capture=False is for diagnostics")
         self.prefixes = [[int(token) for token in prefix] for prefix in prefixes]
         self.max_tokens, self.branches = int(max_tokens), len(prefixes)
         self.capacity = max(map(len, prefixes)) + self.max_tokens
@@ -192,19 +192,20 @@ class GraphAR:
 
     @torch.inference_mode()
     def _capture(self):
-        with torch.cuda.device(self.device):
-            current = torch.cuda.current_stream(self.device)
-            warmup = torch.cuda.Stream(device=self.device)
+        api = torch.xpu if self.device.type == "xpu" else torch.cuda
+        with api.device(self.device):
+            current = api.current_stream(self.device)
+            warmup = api.Stream(device=self.device)
             warmup.wait_stream(current)
-            with torch.cuda.stream(warmup):
+            with api.stream(warmup):
                 for _ in range(3):
                     self.positions.copy_(self.initial_positions)
                     self._decode()
                 self.positions.copy_(self.initial_positions)
             current.wait_stream(warmup)
-            torch.cuda.synchronize(self.device)
-            self.graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self.graph):
+            api.synchronize(self.device)
+            self.graph = api.XPUGraph() if api is torch.xpu else api.CUDAGraph()
+            with api.graph(self.graph):
                 self.output = self._decode()
             # Warmup/capture wrote one future slot. The first real step
             # overwrites that slot in every layer before making it visible.

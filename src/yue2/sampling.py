@@ -105,7 +105,9 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
 
     graph = None
     positive_cache = negative_cache = None
-    graph_enabled = use_cuda_graph and device.type == "cuda" and torch.version.hip is None and not getattr(model, "_yue2_fp8_originals", {})
+    graph_enabled = (use_cuda_graph and torch.version.hip is None and not getattr(model, "_yue2_fp8_originals", {})
+                     and (device.type == "cuda"
+                          or (device.type == "xpu" and os.environ.get("YUE2_XPUGRAPH"))))
     decode_step = _ensure_decode_step(model) if _compile_enabled() and not graph_enabled else None
     synchronize(device)
     start = time.perf_counter()
