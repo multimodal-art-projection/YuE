@@ -125,6 +125,10 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
                 eos = True
                 break
             history.append(token)
+            # MPS caches the per-step attention buffers, which grow with the key
+            # length; without a periodic release the cache exceeds system memory.
+            if device.type == "mps" and (step + 1) % 32 == 0:
+                torch.mps.empty_cache()
             if step + 1 < sampling.max_tokens:
                 if graph is not None:
                     branch_logits = graph.step(next_id)
