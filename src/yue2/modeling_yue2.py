@@ -20,6 +20,18 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 def sdpa(query, key, value, *, attn_mask=None, is_causal=False):
     """Use native grouped-query attention, including a portable MPS fallback."""
     grouped = query.shape[1] != key.shape[1]
+    if grouped and query.device.type == "mps" and not is_causal and query.shape[1] * query.shape[2] <= 8 * key.shape[1] and (
+            attn_mask is None or (attn_mask.shape[1] == 1 and attn_mask.shape[2] in (1, query.shape[2]))):
+        # Decode: fold the query heads that share a KV head into the query axis instead of
+        # copying the KV cache with repeat_interleave on every step. At most 8 folded rows
+        # keeps PyTorch on its vector attention kernel.
+        b, h, n, d = query.shape
+        groups = h // key.shape[1]
+        if attn_mask is not None and attn_mask.shape[2] != 1:
+            attn_mask = attn_mask.repeat(1, 1, groups, 1)
+        out = F.scaled_dot_product_attention(query.reshape(b, key.shape[1], groups * n, d), key, value,
+                                             attn_mask=attn_mask)
+        return out.reshape(b, h, n, d)
     if grouped and query.device.type == "mps":
         # PyTorch's MPS attention does not implement enable_gqa on every release.
         groups = query.shape[1] // key.shape[1]
