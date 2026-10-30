@@ -14,8 +14,6 @@ from yue2 import quantization as quant
 from yue2.protocol import Sampling
 from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM
 from yue2.fast import derive_ar_checkpoint
-from yue2.modeling_yue2 import YuE2ForCausalLM
-from safetensors.torch import load_file
 from test_model import tiny_config
 from transformers import Qwen3ForCausalLM
 

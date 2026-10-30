@@ -9,11 +9,7 @@ import torch
 from transformers import AutoModelForCausalLM
 from transformers.cache_utils import DynamicCache, StaticCache
 from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM, StaticKVCache
-from transformers.cache_utils import StaticCache
-from yue2.modeling_yue2 import YuE2ForCausalLM, StaticKVCache
 import torch.nn.functional as F
-from transformers.cache_utils import DynamicCache
-from yue2.modeling_yue2 import YuE2ForCausalLM
 
 
 def tiny_config():

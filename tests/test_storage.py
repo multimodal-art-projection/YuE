@@ -4,7 +4,7 @@ import pytest
 import threading
 from yue2 import storage
 from yue2.storage import model_identity, sha256_file
-from yue2.storage import collect_hashes, sha256_file
+from yue2.storage import collect_hashes
 
 
 def test_overlapping_writes_use_independent_temporary_files(tmp_path, monkeypatch):

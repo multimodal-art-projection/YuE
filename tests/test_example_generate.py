@@ -43,3 +43,17 @@ def test_example_preserves_external_score(newline, tmp_path, monkeypatch):
     pipe.assert_called_once_with(**request, abc=score)
     song.save_artifacts.assert_called_once_with(output)
     assert abc_file.read_bytes() == score.encode("utf-8")
+
+
+def test_instrumental_clip_rejects_invalid_duration_before_loading(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / 'examples/instrumental_clip.py'
+    for seconds in ['nan', 'inf', '-1', '0', '0.00000001']:
+        result = subprocess.run([sys.executable, str(script), '--prepared', str(tmp_path / 'absent'),
+                                 '--seconds', seconds, '--output', str(tmp_path / 'output')],
+                                capture_output=True, text=True)
+        assert result.returncode == 2
+        assert 'seconds must' in result.stderr
+    assert not (tmp_path / 'output').exists()

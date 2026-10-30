@@ -98,7 +98,7 @@ class SongRequest:
             raise TypeError("style and lyrics must be strings")
         if type(self.seed) is not int or not 0 <= self.seed < 2**63:
             raise ValueError("seed must be an integer in [0, 2**63)")
-        if not isinstance(self.id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,179}", self.id) or self.id in {".", ".."}:
+        if not isinstance(self.id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,179}", self.id):
             raise ValueError("id must be a filename-safe identifier")
         if self.abc is not None and (self.cot == "off" or not isinstance(self.abc, str) or not self.abc.strip()):
             raise ValueError("External ABC requires nonempty text and cot=melody/full")
@@ -114,6 +114,25 @@ class SongRequest:
 
     def to_dict(self):
         return asdict(self)
+
+
+def make_request(style=None, lyrics=None, *, tags=None, **kwargs):
+    if style is not None and tags is not None and style != tags:
+        raise ValueError("style and tags are aliases and cannot disagree")
+    style = tags if style is None else style
+    if style is None or lyrics is None:
+        raise ValueError("Provide style and lyrics")
+    return SongRequest(style=style, lyrics=lyrics, **kwargs)
+
+
+def preflight(kwargs, config=None):
+    """Validate a request and sampling overrides without loading models."""
+    config = config or GenerationConfig()
+    request = make_request(**{k: v for k, v in kwargs.items()
+                              if k not in {"abc_sampling", "semantic_sampling"}})
+    resolve_sampling(kwargs.get("abc_sampling"), config.abc)
+    resolve_sampling(kwargs.get("semantic_sampling"), config.semantic)
+    return request
 
 
 def token_prefixes(request, tokenizer, abc_ids=None):

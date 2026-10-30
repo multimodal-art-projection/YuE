@@ -8,7 +8,6 @@ import torch
 from transformers import AutoModel
 from yue2.modeling_vae import YuE2VAE, YuE2VAEConfig
 from huggingface_hub.file_download import _create_symlink
-from yue2.modeling_vae import YuE2VAE
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))

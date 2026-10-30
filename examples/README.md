@@ -30,3 +30,17 @@ python skills/yue2-music/scripts/abc_tools.py compare \
 ```
 
 The comparison verifies unchanged note pitches, timing, meter, and tempo. Listening or audio transcription is still needed to assess the realized music.
+
+To export a short instrumental preview, first use the existing
+[instrumental preparation workflow](../skills/yue2-music/instrumental/README.md),
+then run:
+
+```bash
+python examples/instrumental_clip.py --prepared outputs/prepared \
+  --seconds 10 --device auto --output outputs/clip
+```
+
+This generates the complete request and crops a preview afterward; it does not
+reduce generation time or make the model end at exactly ten seconds. Native
+artifacts are retained in `native/`. `clip.json` distinguishes preview cropping,
+a short source waveform, and generation truncation; the latter two exit nonzero.
