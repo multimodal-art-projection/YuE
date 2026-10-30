@@ -135,13 +135,20 @@ def decode_latents(args):
         raise ValueError("vae-core-frames must be positive")
     import numpy as np
     import soundfile as sf
+    with open(args.latent, "rb") as stream:
+        latent = np.load(stream, allow_pickle=False)
+        if not isinstance(latent, np.ndarray):
+            latent.close()
+            raise ValueError("Expected a NumPy .npy array")
+    if latent.dtype.kind != "f" or not np.isfinite(latent).all():
+        raise ValueError("Latents must contain finite floating-point values")
+    if (latent.ndim not in (2, 3) or not latent.size
+            or (latent.ndim == 3 and latent.shape[0] != 1)):
+        raise ValueError("Expected nonempty [T,C] or [1,C,T] latents")
     from .modeling_vae import YuE2VAE, YuE2VAEConfig
     from .storage import resolve_model, model_identity
     source = resolve_model(args.vae, revision=args.vae_revision, local_files_only=args.offline)
     config = YuE2VAEConfig.from_pretrained(source, local_files_only=True)
-    latent = np.load(args.latent, allow_pickle=False)
-    if latent.dtype.kind != "f" or not np.isfinite(latent).all():
-        raise ValueError("Latents must contain finite floating-point values")
     if latent.ndim == 2 and latent.shape[1] == config.latent_dim:
         latent = latent.T[None]
     if latent.ndim != 3 or latent.shape[:2] != (1, config.latent_dim) or latent.shape[-1] < 1:

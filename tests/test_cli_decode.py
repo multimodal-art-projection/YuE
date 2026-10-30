@@ -63,6 +63,30 @@ def test_existing_decoder_only_python_api_control(native):
     np.testing.assert_array_equal(actual,expected)
 
 
+@pytest.mark.parametrize('invalid', ['nan', 'empty', 'integer', 'rank', 'archive'])
+def test_bad_latent_file_is_rejected_before_resolving_model(tmp_path, monkeypatch, invalid):
+    from yue2 import cli, storage
+    latent = np.zeros((3, 64), dtype=np.float32)
+    if invalid == 'nan':
+        latent[0, 0] = np.nan
+    elif invalid == 'empty':
+        latent = latent[:0]
+    elif invalid == 'integer':
+        latent = latent.astype(np.int32)
+    elif invalid == 'rank':
+        latent = latent.reshape(-1)
+    source = tmp_path / ('latent.npz' if invalid == 'archive' else 'latent.npy')
+    if invalid == 'archive':
+        np.savez(source, latent=latent)
+    else:
+        np.save(source, latent)
+    monkeypatch.setattr(storage, 'resolve_model', lambda *a, **k: pytest.fail('model resolution ran'))
+    output = tmp_path / 'audio.wav'
+    with pytest.raises(ValueError):
+        cli.main(['decode', str(source), '--vae', 'example/decoder', '--output', str(output)])
+    assert not output.exists()
+
+
 def test_decoder_refuses_nonfinite_output_and_releases_model(tmp_path, native, monkeypatch):
     from yue2 import cli
     vae, latent, _ = native
