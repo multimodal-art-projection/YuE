@@ -230,6 +230,7 @@ def test_tty_output_is_ascii_single_line_and_refresh_is_throttled(monkeypatch):
 @pytest.mark.skipif(os.name != "posix", reason="PTY regression requires POSIX")
 def test_zero_width_pty_preserves_stage_label_and_token_rate(monkeypatch):
     import fcntl
+    import select
     import struct
     import termios
 
@@ -244,7 +245,14 @@ def test_zero_width_pty_preserves_stage_label_and_token_rate(monkeypatch):
             with Progress(stream=stream).stage("Generating song", unit="tokens") as stage:
                 now[0] = 10.0
                 stage.update(1500)
-        output = os.read(master, 8192).decode("ascii")
+        # PTY reads can split one rendered stage across multiple chunks.
+        captured = bytearray()
+        while b"\n" not in captured:
+            assert select.select([master], [], [], 2)[0], "Missing final progress line"
+            chunk = os.read(master, 8192)
+            assert chunk, "PTY closed before the final progress line"
+            captured.extend(chunk)
+        output = captured.decode("ascii")
     finally:
         os.close(slave)
         os.close(master)

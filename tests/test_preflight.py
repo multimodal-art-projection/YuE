@@ -17,7 +17,9 @@ def test_single_output_id_is_checked_before_loading(tmp_path, monkeypatch, ident
     assert not output.exists()
 
 
-def test_shared_preflight_accepts_instrumentals_and_custom_sampling_defaults(tmp_path, monkeypatch, capsys):
+def test_shared_preflight_accepts_instrumentals_and_custom_sampling_defaults(
+    tmp_path, monkeypatch, capsys
+):
     request = {"style": "piano", "lyrics": "", "semantic_sampling": {"max_tokens": 2}}
     config = GenerationConfig.from_dict({"semantic": {"min_tokens": 0}})
     assert preflight(request, config).lyrics == ""
@@ -36,10 +38,66 @@ def test_batch_with_only_invalid_requests_never_loads_models(tmp_path, monkeypat
     source = tmp_path / "songs.jsonl"
     source.write_text(json.dumps({"id": "bad", "style": "piano", "lyrics": "", "seed": -1}) + "\n")
     monkeypatch.setattr(cli, "get_pipe", lambda _: pytest.fail("model loaded"))
-    assert cli.main(["batch", "--input", str(source), "--output", str(tmp_path / "out"), "--quiet"]) == 1
+    assert (
+        cli.main(["batch", "--input", str(source), "--output", str(tmp_path / "out"), "--quiet"])
+        == 1
+    )
 
 
 def test_aliases_have_one_validation_rule():
     assert preflight({"tags": "piano", "lyrics": ""}).style == "piano"
     with pytest.raises(ValueError, match="aliases"):
         preflight({"style": "piano", "tags": "jazz", "lyrics": ""})
+
+
+@pytest.mark.parametrize("existing", ["directory", "file"])
+def test_batch_preserves_occupied_outputs_and_continues(tmp_path, monkeypatch, existing):
+    output = tmp_path / "out"
+    output.mkdir()
+    occupied = output / "existing"
+    if existing == "directory":
+        occupied.mkdir()
+        (occupied / "failure.json").write_text("original receipt")
+        before = {p.name: p.read_bytes() for p in occupied.iterdir()}
+    else:
+        occupied.write_bytes(b"original delivery")
+        before = occupied.read_bytes()
+    source = tmp_path / "batch.jsonl"
+    rows = [
+        {"id": "existing", "style": "piano", "lyrics": ""},
+        {"id": "invalid", "style": "piano", "lyrics": "", "seed": -1},
+    ]
+    source.write_text("\n".join(map(json.dumps, rows)))
+    monkeypatch.setattr(cli, "get_pipe", lambda _: pytest.fail("model loaded for occupied output"))
+    assert cli.main(["batch", "--input", str(source), "--output", str(output), "--quiet"]) == 1
+    after = (
+        {p.name: p.read_bytes() for p in occupied.iterdir()}
+        if existing == "directory"
+        else occupied.read_bytes()
+    )
+    assert after == before
+    assert json.loads((output / "batch.json").read_text())["failed"] == 2
+    assert (output / "invalid/failure.json").is_file()
+
+
+def test_failed_resume_does_not_modify_saved_artifacts(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    output = tmp_path / "out"
+    saved = output / "saved"
+    saved.mkdir(parents=True)
+    (saved / "result.json").write_text('{"status":"incomplete"}')
+    before = {p.name: p.read_bytes() for p in saved.iterdir()}
+    source = tmp_path / "batch.jsonl"
+    source.write_text(json.dumps({"id": "saved", "style": "piano", "lyrics": ""}))
+    closed = []
+    pipe = SimpleNamespace(
+        weights={}, effective_config=lambda *a: {}, close=lambda: closed.append(True)
+    )
+    monkeypatch.setattr(cli, "get_pipe", lambda _: pipe)
+    assert (
+        cli.main(["batch", "--input", str(source), "--output", str(output), "--resume", "--quiet"])
+        == 1
+    )
+    assert before == {p.name: p.read_bytes() for p in saved.iterdir()}
+    assert closed == [True]
