@@ -10,7 +10,7 @@ import time
 import numpy as np
 import torch
 
-from .protocol import SongRequest, GenerationConfig, Sampling, token_prefixes, negative_prefix, CODEC_OFFSET, resolve_sampling
+from .protocol import SongRequest, GenerationConfig, Sampling, make_request, token_prefixes, negative_prefix, CODEC_OFFSET, resolve_sampling
 from .storage import resolve_model, model_identity, identity, write_json, collect_hashes, sha256_file, copy_model_files
 from .tokenization_yue2 import YuE2TextTokenizer
 from .sampling import generate_tokens, synchronize
@@ -105,7 +105,7 @@ class SongResult:
 
     @classmethod
     def load(cls, directory, *, expected_identity=None):
-        """Restore verified native artifacts without loading generation models.
+        """Restore artifacts written by save_artifacts without loading models.
 
         Audio is the stored PCM24 FLAC waveform, not the pre-save float array.
         Hash verification checks the receipt, not independent provenance or quality.
@@ -115,30 +115,12 @@ class SongResult:
         directory = Path(directory)
         result = verify_result(directory, expected_identity)
         plan = SymbolicPlan.load(directory)
-        request = json.loads((directory / "request.json").read_text(encoding="utf-8"))
-        if request != plan.request.to_dict():
-            raise ValueError("Saved request does not match the symbolic plan")
         tokens = np.load(directory / "semantic.npy", allow_pickle=False)
-        if (tokens.ndim != 1 or tokens.dtype.kind not in "iu" or not tokens.size
-                or (tokens < 0).any() or (tokens >= 32768).any()):
-            raise ValueError("Invalid saved semantic token array")
         latents = np.load(directory / "latent.npy", allow_pickle=False)
-        valid_layout = ((latents.ndim == 2 and latents.shape[1] == 64 and latents.shape[0] > 0)
-                        or (latents.ndim == 3 and latents.shape[:2] == (1, 64) and latents.shape[2] > 0))
-        if not valid_layout or latents.dtype.kind != "f" or not np.isfinite(latents).all():
-            raise ValueError("Invalid saved finite latent array")
         audio, sample_rate = sf.read(directory / "audio.flac", dtype="float32", always_2d=True)
-        if (audio.shape[1] != 2 or len(audio) < 1 or not np.isfinite(audio).all()
-                or sample_rate != result["sample_rate"]
-                or len(audio) / sample_rate != result["audio_seconds"]):
-            raise ValueError("Saved audio does not match result metadata")
-        truncated = result["truncated"]
-        if (truncated.get("abc") is not plan.truncated
-                or not isinstance(truncated.get("semantic"), bool)):
-            raise ValueError("Saved truncation flags do not match the plan")
         config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
-        semantic = SemanticResult(plan, tokens.tolist(), result["timing"].get("semantic", {}),
-                                  truncated["semantic"])
+        semantic = SemanticResult(plan, tokens.tolist(), result["timing"]["semantic"],
+                                  result["truncated"]["semantic"])
         return cls(audio, sample_rate, semantic, latents, config, result["weights"],
                    result["timing"], result["identity"])
 
@@ -282,11 +264,6 @@ class YuE2Pipeline:
             raise
         return self._model
 
-    @staticmethod
-    def _request(style=None, lyrics=None, *, tags=None, **kwargs):
-        from .protocol import make_request
-        return make_request(style, lyrics, tags=tags, **kwargs)
-
     def _generate(self, prefix, sampling, seed, phase, **kwargs):
         model = self._load_model() if self.backend != "vllm" else None
         callback = kwargs.pop("on_token", None)
@@ -311,7 +288,7 @@ class YuE2Pipeline:
 
     def plan(self, style=None, lyrics=None, *, tags=None, request=None, abc_sampling=None,
              cancelled=None, on_token=None, **kwargs):
-        request = request or self._request(style, lyrics, tags=tags, **kwargs)
+        request = request or make_request(style, lyrics, tags=tags, **kwargs)
         if request.cot == "off":
             return SymbolicPlan(request, None, [], token_prefixes(request, self.tokenizer))
         if request.abc is not None:
@@ -447,7 +424,7 @@ class YuE2Pipeline:
 
     def __call__(self, style=None, lyrics=None, *, tags=None, abc_sampling=None,
                  semantic_sampling=None, cancelled=None, on_token=None, on_progress=None, **kwargs):
-        request = self._request(style, lyrics, tags=tags, **kwargs)
+        request = make_request(style, lyrics, tags=tags, **kwargs)
         config = self.effective_config(request, abc_sampling, semantic_sampling)
         request_id = identity({"request": request.to_dict(), "config": config, "weights": self.weights})
         start = time.perf_counter()

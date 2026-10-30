@@ -1,6 +1,7 @@
 """Small CLI sharing the Python pipeline's defaults and artifact protocol."""
 from __future__ import annotations
 import argparse
+from contextlib import closing
 import importlib.metadata
 import json
 import os
@@ -104,11 +105,8 @@ def export_models(args):
     directory = Path(args.output)
     if directory.exists() and any(directory.iterdir()):
         raise FileExistsError("Export needs an empty output directory")
-    pipe = get_pipe(args)
-    try:
+    with closing(get_pipe(args)) as pipe:
         pipe.save_pretrained(directory)
-    finally:
-        pipe.close()
     print(json.dumps({"exported": True, "pipeline": str(directory / "pipeline.json")}))
     return 0
 
@@ -231,13 +229,10 @@ def generate(args):
         data = {"id": "first_song", "style": "Mandarin, warm piano, acoustic pop, female vocal",
                 "lyrics": "[Verse]\n晚风轻轻吹过窗前\n你留下的笑还在昨天\n[Chorus]\n让这首歌陪你走远\n把所有想念唱成明天"}
     kwargs = request_kwargs(data, base)
-    preflight(kwargs, generation_config(args))
-    pipe = get_pipe(args)
-    try:
+    request = preflight(kwargs, generation_config(args))
+    with closing(get_pipe(args)) as pipe:
         directory = Path(args.output or "runs/default") / kwargs.get("id", "song")
         if args.resume and (directory / "result.json").exists():
-            req_kwargs = {k: v for k, v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}}
-            request = pipe._request(**req_kwargs)
             config = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
             expected = identity({"request": request.to_dict(), "config": config, "weights": pipe.weights})
             result = verify_result(directory, expected)
@@ -262,8 +257,6 @@ def generate(args):
             write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
                                                     "request": data})
             raise
-    finally:
-        pipe.close()
 
 
 def batch(args):

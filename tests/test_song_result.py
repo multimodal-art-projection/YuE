@@ -1,4 +1,3 @@
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -8,18 +7,26 @@ import pytest
 import soundfile as sf
 from yue2.pipeline import SymbolicPlan, SemanticResult, SongResult
 from yue2.protocol import SongRequest
-from yue2.storage import collect_hashes, verify_result, write_json
+from yue2.storage import verify_result
 
 
 @pytest.fixture
 def saved(tmp_path):
     request = SongRequest(
-        style="piano", lyrics="[Verse]\nHello", cot="melody", abc="X:1\r\nK:C\r\nC D|\r\n"
+        style="piano",
+        lyrics="[Verse]\nHello",
+        cot="melody",
+        abc="X:1\r\nK:C\r\nC D|\r\n",
     )
-    plan = SymbolicPlan(request, request.abc, [70, 71], [1, 70, 71], {"seconds": 0.1}, True)
+    plan = SymbolicPlan(
+        request, request.abc, [70, 71], [1, 70, 71], {"seconds": 0.1}, True
+    )
     semantic = SemanticResult(plan, [3, 4], {"seconds": 0.2}, False)
     audio = (
-        np.stack([np.sin(np.arange(4800) * 0.03), np.cos(np.arange(4800) * 0.03)], axis=-1) * 0.1
+        np.stack(
+            [np.sin(np.arange(4800) * 0.03), np.cos(np.arange(4800) * 0.03)], axis=-1
+        )
+        * 0.1
     )
     latents = np.arange(128, dtype=np.float32).reshape(1, 64, 2) / 128
     song = SongResult(
@@ -47,7 +54,10 @@ def test_load_restores_exact_stored_run_and_can_export_audio(saved, tmp_path):
     assert loaded.semantic.tokens == original.semantic.tokens
     assert loaded.semantic.plan == original.semantic.plan
     assert loaded.config == original.config and loaded.weights == original.weights
-    assert loaded.timing == original.timing and loaded.request_identity == original.request_identity
+    assert (
+        loaded.timing == original.timing
+        and loaded.request_identity == original.request_identity
+    )
     assert loaded.truncated == {"abc": True, "semantic": False}
     output = tmp_path / "restored.wav"
     loaded.save(output)
@@ -59,31 +69,21 @@ def test_load_restores_exact_stored_run_and_can_export_audio(saved, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "variant",
-    ["corrupt-audio", "bad-semantic", "nonfinite-latents", "wrong-rate", "wrong-identity"],
+    "artifact",
+    ["audio.flac", "semantic.npy", "latent.npy", "request.json", "config.json"],
 )
-def test_load_refuses_corrupt_or_inconsistent_native_artifacts(saved, variant):
+def test_load_refuses_changed_native_artifacts(saved, artifact):
     directory, _ = saved
-    receipt = json.loads((directory / "result.json").read_text())
-    expected = None
-    if variant == "corrupt-audio":
-        with (directory / "audio.flac").open("ab") as stream:
-            stream.write(b"changed")
-    elif variant == "bad-semantic":
-        np.save(directory / "semantic.npy", np.zeros((2, 2), dtype=np.int32))
-        receipt["artifacts"] = collect_hashes(directory)
-        write_json(directory / "result.json", receipt)
-    elif variant == "nonfinite-latents":
-        np.save(directory / "latent.npy", np.full((1, 64, 2), np.nan, dtype=np.float32))
-        receipt["artifacts"] = collect_hashes(directory)
-        write_json(directory / "result.json", receipt)
-    elif variant == "wrong-rate":
-        receipt["sample_rate"] = 44100
-        write_json(directory / "result.json", receipt)
-    else:
-        expected = "different-request"
-    with pytest.raises(ValueError):
-        SongResult.load(directory, expected_identity=expected)
+    with (directory / artifact).open("ab") as stream:
+        stream.write(b"changed")
+    with pytest.raises(ValueError, match="corrupt result"):
+        SongResult.load(directory)
+
+
+def test_load_refuses_a_different_request_identity(saved):
+    directory, _ = saved
+    with pytest.raises(ValueError, match="identity changed"):
+        SongResult.load(directory, expected_identity="different-request")
 
 
 def test_load_does_not_import_generation_models(saved, tmp_path):
