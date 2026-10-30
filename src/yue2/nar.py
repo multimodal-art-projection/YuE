@@ -124,7 +124,11 @@ class CachedNAR:
         local = torch.arange(self.nar_length, device=self.device).clamp(max=model.config.max_latent_frames - 1)
         self.pos_emb = model.latent_pos_embed(local)[None]
         self.cache = []
-        self._prefill()
+        try:
+            self._prefill()
+        except BaseException:
+            self.close()
+            raise
 
     def _attention(self, q, k, v, causal=False):
         return attention(q, k, v, causal=causal, backend=self.backend, query_chunk_size=self.query_chunk_size)
@@ -203,8 +207,11 @@ class CachedNAR:
 
 
 @contextmanager
-def _offload_ar(model, enabled):
-    """Temporarily move unused AR modules; this model cannot serve concurrently."""
+def _offload_ar(model, enabled, cache=None):
+    """Release the chunk cache before restoring AR weights, even if a transfer fails.
+
+    This model cannot serve concurrently while modules are offloaded.
+    """
     modules = [model.model.embed_tokens, model.lm_head]
     for layer in model.model.layers:
         modules.extend((layer.input_layernorm, layer.self_attn, layer.post_attention_layernorm, layer.mlp))
@@ -220,6 +227,8 @@ def _offload_ar(model, enabled):
                 torch.cuda.empty_cache()
         yield
     finally:
+        if cache is not None:
+            cache.close()
         for module, device in moved:
             module.to(device=device)
 
@@ -248,14 +257,11 @@ def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
         engine = CachedNAR(model, chunk, attention, query_chunk_size)
         # Drop the prefix cache before restoring AR weights, including on
         # cancellation/failure, to keep the restoration memory peak bounded.
-        with _offload_ar(model, offload_ar):
-            try:
-                progress = None
-                if on_progress is not None:
-                    def progress(completed, total):
-                        on_progress(chunk_index * total + completed, total * len(chunks))
-                output.append(engine.solve(steps, cancelled, on_progress=progress))
-            finally:
-                engine.close()
+        with _offload_ar(model, offload_ar, cache=engine):
+            progress = None
+            if on_progress is not None:
+                def progress(completed, total):
+                    on_progress(chunk_index * total + completed, total * len(chunks))
+            output.append(engine.solve(steps, cancelled, on_progress=progress))
         del engine
     return torch.cat(output, dim=0)
