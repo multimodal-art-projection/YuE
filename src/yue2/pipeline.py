@@ -155,8 +155,6 @@ class YuE2Pipeline:
             raise ValueError("quantization must be none or fp8")
         if not math.isfinite(memory_budget_gib) or not 0 < memory_budget_gib:
             raise ValueError("memory_budget_gib must be finite and positive")
-        if not isinstance(low_vram, bool):
-            raise TypeError("low_vram must be True or False")
         if low_vram and backend == "vllm":
             raise ValueError("low_vram requires backend='torch' or 'torch-eager'")
         self.low_vram = low_vram
@@ -338,7 +336,7 @@ class YuE2Pipeline:
                                 context=self.generation_config.context, offload_ar=self.offload_ar,
                                 cancelled=cancelled,
                                 on_progress=report if (self.progress or on_progress is not None) else None,
-                                **({"low_vram": True} if self.low_vram else {}))
+                                low_vram=self.low_vram)
             return result.detach().float().cpu().numpy()
 
     def close(self):

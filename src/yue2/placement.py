@@ -17,8 +17,6 @@ def nar_modules(model):
 
 def activate_phase(model, phase, device):
     """Evict the inactive experts before moving the active experts and shared norm."""
-    if phase not in {"ar", "nar"}:
-        raise ValueError("phase must be ar or nar")
     active, inactive = (ar_modules, nar_modules) if phase == "ar" else (nar_modules, ar_modules)
     for module in inactive(model):
         module.to(device="cpu")
