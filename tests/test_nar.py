@@ -283,3 +283,48 @@ def test_nar_reuses_one_work_buffer_across_layers_and_steps(model):
     finally:
         engine.close()
     assert engine.work_k is engine.work_v is None
+
+
+def test_synthesis_releases_cache_when_offload_transfer_fails(model, monkeypatch):
+    monkeypatch.setattr(nar, "CODEC_OFFSET", 8)
+    monkeypatch.setattr(nar, "MUSIC_END", 7)
+    engines = []
+    original = nar.CachedNAR
+
+    class Tracked(original):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            engines.append(self)
+
+    def fail_transfer(**kwargs):
+        raise RuntimeError("offload transfer failed")
+
+    embedding = model.model.embed_tokens
+    monkeypatch.setattr(embedding, "parameters", lambda: iter([SimpleNamespace(device=torch.device("meta"))]))
+    monkeypatch.setattr(embedding, "to", fail_transfer)
+    monkeypatch.setattr(nar, "CachedNAR", Tracked)
+    with pytest.raises(RuntimeError, match="offload transfer failed"):
+        nar.synthesize(model, [2, 3], [1] * 4, 42, steps=2, context=15, offload_ar=True)
+    assert len(engines) == 1
+    assert engines[0].cache == []
+    assert engines[0].cos is engines[0].sin is engines[0].pos_emb is None
+
+
+def test_prefill_failure_releases_already_cached_layers(model, monkeypatch):
+    closed = []
+    original_close = nar.CachedNAR.close
+
+    def close(engine):
+        original_close(engine)
+        closed.append(engine)
+
+    def fail_projection(*args):
+        raise RuntimeError("prefill projection failed")
+
+    monkeypatch.setattr(nar.CachedNAR, "close", close)
+    monkeypatch.setattr(model.model.layers[1].self_attn, "project_qkv", fail_projection)
+    with pytest.raises(RuntimeError, match="prefill projection failed"):
+        nar.CachedNAR(model, nar.Chunk([2, 3], torch.zeros(3, 64)))
+    assert len(closed) == 1
+    assert closed[0].cache == []
+    assert closed[0].cos is closed[0].sin is closed[0].pos_emb is None

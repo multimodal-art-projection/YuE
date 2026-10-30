@@ -215,8 +215,11 @@ class CachedNAR:
 
 
 @contextmanager
-def _offload_ar(model, enabled):
-    """Temporarily move unused AR modules; this model cannot serve concurrently."""
+def _offload_ar(model, enabled, cache=None):
+    """Release the chunk cache before restoring AR weights, even if a transfer fails.
+
+    This model cannot serve concurrently while modules are offloaded.
+    """
     modules = ar_modules(model)
     moved = []
     try:
@@ -230,6 +233,8 @@ def _offload_ar(model, enabled):
                 empty_cache(device)
         yield
     finally:
+        if cache is not None:
+            cache.close()
         for module, device in moved:
             module.to(device=device)
 
@@ -262,17 +267,14 @@ def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
             engine = CachedNAR(model, chunk, attention, query_chunk_size)
             # Drop the prefix cache before restoring AR weights, including on
             # cancellation/failure, to keep the restoration memory peak bounded.
-            with _offload_ar(model, offload_ar and not low_vram):
-                try:
-                    if low_vram:
-                        activate_phase(model, "nar", device)
-                    progress = None
-                    if on_progress is not None:
-                        def progress(completed, total):
-                            on_progress(chunk_index * total + completed, total * len(chunks))
-                    output.append(engine.solve(steps, cancelled, on_progress=progress))
-                finally:
-                    engine.close()
+            with _offload_ar(model, offload_ar and not low_vram, cache=engine):
+                if low_vram:
+                    activate_phase(model, "nar", device)
+                progress = None
+                if on_progress is not None:
+                    def progress(completed, total):
+                        on_progress(chunk_index * total + completed, total * len(chunks))
+                output.append(engine.solve(steps, cancelled, on_progress=progress))
             del engine
     finally:
         if low_vram:
