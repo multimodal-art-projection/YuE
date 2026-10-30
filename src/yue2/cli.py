@@ -281,26 +281,30 @@ def batch(args):
             if not args.quiet:
                 print(f"Song {index}/{len(rows)}: {row['id']}", file=sys.stderr, flush=True)
             directory = output / row["id"]
+            write_failure = not directory.exists()
             try:
                 kwargs = request_kwargs(row, path.parent)
                 if args.cot is not None:
                     kwargs["cot"] = args.cot
                 request = preflight(kwargs, defaults)
+                resuming = args.resume and (directory / "result.json").exists()
+                if not resuming and directory.exists() and any(directory.iterdir()):
+                    raise FileExistsError("Nonempty request output; use --resume or a new run")
                 if pipe is None:
                     pipe = get_pipe(args)
                 cfg = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
                 expected = identity({"request": request.to_dict(), "config": cfg, "weights": pipe.weights})
-                if args.resume and (directory / "result.json").exists():
+                if resuming:
                     receipt = verify_result(directory, expected)
                 else:
-                    if directory.exists() and any(directory.iterdir()):
-                        raise FileExistsError("Nonempty request output; use --resume or a new run")
+                    write_failure = True
                     receipt = pipe(**kwargs).save_artifacts(directory)
                 receipts.append({"id": row["id"], "status": "complete", "identity": receipt["identity"]})
             except Exception as exc:
                 failures += 1
                 failure = {"id": row["id"], "status": "failed", "reason": str(exc), "type": type(exc).__name__}
-                write_json(directory / "failure.json", failure)
+                if write_failure:
+                    write_json(directory / "failure.json", failure)
                 receipts.append(failure)
             write_json(output / "batch.json", {"complete": len(receipts) == len(rows) and not failures,
                        "expected": len(rows), "failed": failures, "results": receipts})
