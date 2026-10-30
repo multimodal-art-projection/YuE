@@ -78,8 +78,8 @@ def doctor(args):
               "validated": False, "note": "Environment readiness is not quality or real-24GB acceptance."}
     if args.verify_hashes:
         from .storage import resolve_model
-        report["weights"] = {"model": model_identity(resolve_model(model, local_files_only=args.offline)),
-                             "vae": model_identity(resolve_model(vae, local_files_only=args.offline))}
+        report["weights"] = {"model": model_identity(resolve_model(model, revision=args.revision, local_files_only=args.offline)),
+                             "vae": model_identity(resolve_model(vae, revision=args.vae_revision, local_files_only=args.offline))}
     if args.output:
         write_json(args.output, report)
     print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -108,35 +108,38 @@ def generate(args):
         data = {"id": "first_song", "style": "Mandarin, warm piano, acoustic pop, female vocal",
                 "lyrics": "[Verse]\n晚风轻轻吹过窗前\n你留下的笑还在昨天\n[Chorus]\n让这首歌陪你走远\n把所有想念唱成明天"}
     kwargs = request_kwargs(data, base)
+    from .protocol import SongRequest
+    SongRequest(style="", lyrics="", id=kwargs.get("id", "song"))
     pipe = get_pipe(args)
-    directory = Path(args.output or "runs/default") / kwargs.get("id", "song")
-    if args.resume and (directory / "result.json").exists():
-        req_kwargs = {k: v for k, v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}}
-        request = pipe._request(**req_kwargs)
-        config = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
-        expected = identity({"request": request.to_dict(), "config": config, "weights": pipe.weights})
-        result = verify_result(directory, expected)
-        print(json.dumps({"resumed": True, "result": str(directory / "result.json"), "truncated": result["truncated"]}))
-        return 0
-    if directory.exists() and any(directory.iterdir()):
-        raise FileExistsError(f"Nonempty output {directory}; use --resume or a new output directory")
-    directory.mkdir(parents=True, exist_ok=True)
     try:
-        if args.stage == "plan":
-            kwargs.pop("semantic_sampling", None)
-            plan = pipe.plan(**kwargs)
-            plan.save(directory)
-            print(json.dumps({"stage": "plan", "output": str(directory), "truncated": plan.truncated}))
-        else:
-            result = pipe(**kwargs)
-            result.save_artifacts(directory)
-            print(json.dumps({"status": "complete", "output": str(directory), "truncated": result.truncated,
-                              "seconds": result.timing["e2e_seconds"]}))
-        return 0
-    except BaseException as exc:
-        write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
-                                                "request": data})
-        raise
+        directory = Path(args.output or "runs/default") / kwargs.get("id", "song")
+        if args.resume and (directory / "result.json").exists():
+            req_kwargs = {k: v for k, v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}}
+            request = pipe._request(**req_kwargs)
+            config = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
+            expected = identity({"request": request.to_dict(), "config": config, "weights": pipe.weights})
+            result = verify_result(directory, expected)
+            print(json.dumps({"resumed": True, "result": str(directory / "result.json"), "truncated": result["truncated"]}))
+            return 0
+        if directory.exists() and any(directory.iterdir()):
+            raise FileExistsError(f"Nonempty output {directory}; use --resume or a new output directory")
+        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            if args.stage == "plan":
+                kwargs.pop("semantic_sampling", None)
+                plan = pipe.plan(**kwargs)
+                plan.save(directory)
+                print(json.dumps({"stage": "plan", "output": str(directory), "truncated": plan.truncated}))
+            else:
+                result = pipe(**kwargs)
+                result.save_artifacts(directory)
+                print(json.dumps({"status": "complete", "output": str(directory), "truncated": result.truncated,
+                                  "seconds": result.timing["e2e_seconds"]}))
+            return 0
+        except BaseException as exc:
+            write_json(directory / "failure.json", {"status": "failed", "type": type(exc).__name__, "reason": str(exc),
+                                                    "request": data})
+            raise
     finally:
         pipe.close()
 
@@ -147,8 +150,13 @@ def batch(args):
     path = Path(args.input)
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     ids = [r.get("id") for r in rows]
-    if any(x is None for x in ids) or len(ids) != len(set(ids)):
-        raise ValueError("Every batch request must have a unique id")
+    if any(not isinstance(x, str) for x in ids) or len(ids) != len(set(ids)):
+        raise ValueError("Every batch request must have a unique string id")
+    # IDs select filesystem destinations, including failure receipts. Validate
+    # them before loading a model or entering the per-request error handler.
+    from .protocol import SongRequest
+    for identifier in ids:
+        SongRequest(style="", lyrics="", id=identifier)
     pipe = get_pipe(args)
     output = Path(args.output or "runs/batch")
     receipts, failures = [], 0

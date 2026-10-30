@@ -51,6 +51,10 @@ class GenerationConfig:
     version: str = PROTOCOL_VERSION
 
     def __post_init__(self):
+        if self.version != PROTOCOL_VERSION:
+            raise ValueError(f"Unsupported generation protocol version: {self.version!r}")
+        if not isinstance(self.abc, Sampling) or not isinstance(self.semantic, Sampling):
+            raise TypeError("abc and semantic must be Sampling objects; use from_dict for dictionaries")
         if self.context != CONTEXT or self.ode_method != "midpoint" or type(self.ode_steps) is not int or self.ode_steps < 1:
             raise ValueError("Require context=24576 and midpoint with positive integer steps")
 
@@ -94,7 +98,7 @@ class SongRequest:
             raise TypeError("style and lyrics must be strings")
         if type(self.seed) is not int or not 0 <= self.seed < 2**63:
             raise ValueError("seed must be an integer in [0, 2**63)")
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,179}", self.id) or self.id in {".", ".."}:
+        if not isinstance(self.id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,179}", self.id) or self.id in {".", ".."}:
             raise ValueError("id must be a filename-safe identifier")
         if self.abc is not None and (self.cot == "off" or not isinstance(self.abc, str) or not self.abc.strip()):
             raise ValueError("External ABC requires nonempty text and cot=melody/full")

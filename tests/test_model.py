@@ -4,13 +4,16 @@ import json
 import os
 import struct
 from pathlib import Path
-
 import pytest
 import torch
 from transformers import AutoModelForCausalLM
 from transformers.cache_utils import DynamicCache, StaticCache
-
 from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM, StaticKVCache
+from transformers.cache_utils import StaticCache
+from yue2.modeling_yue2 import YuE2ForCausalLM, StaticKVCache
+import torch.nn.functional as F
+from transformers.cache_utils import DynamicCache
+from yue2.modeling_yue2 import YuE2ForCausalLM
 
 
 def tiny_config():
@@ -153,3 +156,63 @@ def test_release_tensor_names_and_shapes_when_source_available():
         actual = YuE2ForCausalLM(YuE2Config()).state_dict()
     expected = {key: item['shape'] for key, item in header.items() if key != '__metadata__'}
     assert {key: list(tensor.shape) for key, tensor in actual.items()} == expected
+
+
+def model_cache():
+    torch.set_num_threads(1)
+    torch.manual_seed(314)
+    model = YuE2ForCausalLM(tiny_config()).eval()
+    c = model.config
+    cache = StaticKVCache(c.num_hidden_layers,1,c.num_key_value_heads,12,c.head_dim,model.dtype,model.device)
+    return model, cache
+
+@pytest.mark.parametrize('positions', [[2,3], [5,6], [-1,0]])
+@torch.inference_mode()
+def test_append_only_cache_refuses_explicit_nonappend_slots_without_mutating(tmp_path, positions):
+    model, cache = model_cache()
+    model(torch.tensor([[3,5,8,7]]), past_key_values=cache)
+    before = [(k.clone(),v.clone()) for k,v in zip(cache.key_cache,cache.value_cache)]
+    with pytest.raises(ValueError,match='append'):
+        model(torch.tensor([[11,12]]), past_key_values=cache, cache_position=torch.tensor(positions))
+    assert cache.get_seq_length() == 4
+    assert all(torch.equal(k,oldk) and torch.equal(v,oldv) for (k,v),(oldk,oldv) in
+               zip(zip(cache.key_cache,cache.value_cache),before))
+
+@torch.inference_mode()
+def test_append_positions_and_hf_rewrites_match_fresh_sequence_oracle():
+    model, cache = model_cache()
+    original = torch.tensor([[3,5,8,7]])
+    replacement = torch.tensor([[11,12]])
+    model(original, past_key_values=cache)
+    append = model(replacement, past_key_values=cache, cache_position=torch.tensor([4,5])).logits
+    expected = model(torch.cat([original,replacement],dim=1),use_cache=False).logits[:, -2:]
+    torch.testing.assert_close(append, expected, atol=2e-6,rtol=2e-5)
+    hf = StaticCache(config=model.config,max_cache_len=12)
+    model(original,past_key_values=hf)
+    rewrite = model(replacement,past_key_values=hf,cache_position=torch.tensor([2,3])).logits
+    fresh = model(torch.cat([original[:,:2],replacement],dim=1),use_cache=False).logits[:, -2:]
+    torch.testing.assert_close(rewrite,fresh,atol=2e-6,rtol=2e-5)
+
+
+@pytest.mark.parametrize('selector', ['permutation','tail','full-count'])
+def test_loss_rejects_logit_selection_before_populating_cache(selector):
+    torch.set_num_threads(1)
+    model = YuE2ForCausalLM(tiny_config()).eval()
+    cache = DynamicCache()
+    ids = torch.tensor([[3,5,8]])
+    selected = torch.tensor([2,0,1]) if selector == 'permutation' else (1 if selector == 'tail' else 3)
+    with pytest.raises(ValueError,match='logits_to_keep=0'):
+        model(ids,labels=ids,past_key_values=cache,logits_to_keep=selected)
+    assert cache.get_seq_length() == 0
+
+def test_full_causal_loss_matches_shifted_logits_and_backpropagates():
+    torch.set_num_threads(1)
+    torch.manual_seed(173)
+    model = YuE2ForCausalLM(tiny_config()).train()
+    ids = torch.tensor([[3,5,8,7]])
+    result = model(ids,labels=ids,use_cache=False,logits_to_keep=0)
+    expected = F.cross_entropy(result.logits[:,:-1].reshape(-1,71),ids[:,1:].reshape(-1))
+    assert torch.equal(result.loss,expected)
+    result.loss.backward()
+    assert torch.isfinite(model.lm_head.weight.grad).all()
+    assert torch.count_nonzero(model.lm_head.weight.grad) > 0
