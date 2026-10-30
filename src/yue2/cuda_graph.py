@@ -29,8 +29,9 @@ def attention_capabilities(model):
         and torch.backends.cuda.is_flash_attention_available()
         and torch.backends.cuda.can_use_flash_attention(params))
     if torch.backends.cudnn.is_available():
-        kv = kv.repeat_interleave(config.num_attention_heads // config.num_key_value_heads, dim=1)
-        mask = torch.ones((1, 1, 1, 1), dtype=torch.bool, device=weight.device)
+        # cuDNN rejects a single key; every graph has prefix + generation capacity >= 2.
+        kv = weight.new_zeros((1, config.num_attention_heads, 2, config.head_dim))
+        mask = torch.ones((1, 1, 1, 2), dtype=torch.bool, device=weight.device)
         params = torch.backends.cuda.SDPAParams(q, kv, kv, mask, 0.0, False, False)
         result["cudnn"] = bool(torch.backends.cuda.can_use_cudnn_attention(params))
     return result
