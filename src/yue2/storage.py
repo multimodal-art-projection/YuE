@@ -26,16 +26,14 @@ def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
-    temporary = None
+    stream = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=path.name + ".", suffix=".tmp", delete=False)
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=path.name + ".", suffix=".tmp", delete=False) as stream:
-            temporary = Path(stream.name)
+        with stream:
             stream.write(rendered)
-        os.replace(temporary, path)
+        os.replace(stream.name, path)
     finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        Path(stream.name).unlink(missing_ok=True)
 
 
 # Explicit public model files. Extra reports, caches and arbitrary code are not exported.
