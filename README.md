@@ -341,11 +341,25 @@ For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https:
 
 ## Contact
 
-<p align="center">
-  <a href="https://discord.gg/ssAyWMnMzu"><strong><img src="assets/discord.svg" width="20" height="20" alt="" />&nbsp;Join&nbsp;Discord</strong></a><br>
-  <sub>Global users</sub>
-</p>
-
-- **Licensing inquiries:** [lauryliuyang@hkgai.org](mailto:lauryliuyang@hkgai.org)
-- **Data partnerships:** [gezhang@umich.edu](mailto:gezhang@umich.edu)
-- **Academic collaboration:** [ryuanab@connect.ust.hk](mailto:ryuanab@connect.ust.hk)
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>💬 Community</strong><br>
+      <sub><a href="https://discord.gg/ssAyWMnMzu">Join us on Discord ↗</a></sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>✉️ Licensing inquiries</strong><br>
+      <sub><a href="mailto:lauryliuyang@hkgai.org">lauryliuyang@hkgai.org</a></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🤝 Data partnerships</strong><br>
+      <sub><a href="mailto:gezhang@umich.edu">gezhang@umich.edu</a></sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🎓 Academic collaboration</strong><br>
+      <sub><a href="mailto:ryuanab@connect.ust.hk">ryuanab@connect.ust.hk</a></sub>
+    </td>
+  </tr>
+</table>
