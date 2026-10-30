@@ -14,6 +14,9 @@ from typing import Callable, Sequence
 import torch
 import torch.nn.functional as F
 
+from .devices import empty_cache
+from .placement import activate_phase, ar_modules
+from .modeling_yue2 import sdpa
 from .protocol import CODEC_OFFSET, CODEC_SIZE, CONTEXT, MUSIC_END, chunk_ranges
 
 
@@ -71,11 +74,6 @@ def attention(q, k, v, *, causal=False, backend="sdpa", query_chunk_size=None):
     query = q.transpose(0, 1).unsqueeze(0)
     key = k.transpose(0, 1).unsqueeze(0)
     value = v.transpose(0, 1).unsqueeze(0)
-    grouped = query.shape[1] != key.shape[1]
-    if grouped and q.device.type == "mps":
-        groups = query.shape[1] // key.shape[1]
-        key, value = key.repeat_interleave(groups, 1), value.repeat_interleave(groups, 1)
-        grouped = False
     context = nullcontext()
     if backend != "sdpa":
         from torch.nn.attention import SDPBackend, sdpa_kernel
@@ -92,9 +90,9 @@ def attention(q, k, v, *, causal=False, backend="sdpa", query_chunk_size=None):
             if causal and start:
                 mask = (torch.arange(end, device=q.device)[None, :] <=
                         torch.arange(start, end, device=q.device)[:, None])
-            outputs.append(F.scaled_dot_product_attention(
+            outputs.append(sdpa(
                 query[..., start:end, :], used_key, used_value,
-                attn_mask=mask, is_causal=causal and start == 0, enable_gqa=grouped,
+                attn_mask=mask, is_causal=causal and start == 0,
             ))
     return torch.cat(outputs, dim=-2)[0].transpose(0, 1)
 
@@ -105,7 +103,7 @@ class CachedNAR:
     def __init__(self, model, chunk: Chunk, attention="sdpa", query_chunk_size=None):
         self.model, self.chunk = model, chunk
         self.backend, self.query_chunk_size = attention, query_chunk_size
-        weight = next(model.vae2llm.parameters())
+        weight = model.model.embed_tokens.weight
         self.device, self.dtype = weight.device, weight.dtype
         if chunk.noise.ndim != 2 or chunk.noise.shape[1] != 64 or len(chunk.noise) < 1:
             raise ValueError("Expected nonempty acoustic noise [frames,64]")
@@ -121,10 +119,14 @@ class CachedNAR:
         self.visible_length = min(chunk.nar_cond_end, self.ar_length) if chunk.nar_cond_end else self.ar_length
         positions = torch.arange(self.ar_length, self.ar_length + self.nar_length, device=self.device)[None]
         self.cos, self.sin = model.model.rotary_emb(positions)
-        local = torch.arange(self.nar_length, device=self.device).clamp(max=model.config.max_latent_frames - 1)
-        self.pos_emb = model.latent_pos_embed(local)[None]
+        self.pos_emb = None
         self.cache = []
-        self._prefill()
+        self.work_k = self.work_v = None
+        try:
+            self._prefill()
+        except BaseException:
+            self.close()
+            raise
 
     def _attention(self, q, k, v, causal=False):
         return attention(q, k, v, causal=causal, backend=self.backend, query_chunk_size=self.query_chunk_size)
@@ -157,11 +159,21 @@ class CachedNAR:
         shifted = model._shift_t_value(raw_t, self.device, self.dtype)
         x = model.vae2llm(x_nar[None])
         x = x + model.time_embedder(shifted.expand(self.nar_length))[None]
+        if self.pos_emb is None:
+            local = torch.arange(self.nar_length, device=self.device).clamp(max=model.config.max_latent_frames - 1)
+            self.pos_emb = model.latent_pos_embed(local)[None]
         x = x + self.pos_emb
+        if self.work_k is None:
+            shape = (self.visible_length + self.nar_length, *self.cache[0][0].shape[1:])
+            self.work_k = torch.empty(shape, device=self.device, dtype=self.dtype)
+            self.work_v = torch.empty_like(self.work_k)
         for layer, (ar_k, ar_v) in zip(model.model.layers, self.cache):
             q, k, v = layer.nar_self_attn.project_qkv(layer.nar_input_layernorm(x), self.cos, self.sin)
-            k, v = torch.cat((ar_k, k[0])), torch.cat((ar_v, v[0]))
-            h = self._attention(q[0], k, v)
+            self.work_k[:self.visible_length].copy_(ar_k)
+            self.work_v[:self.visible_length].copy_(ar_v)
+            self.work_k[self.visible_length:].copy_(k[0])
+            self.work_v[self.visible_length:].copy_(v[0])
+            h = self._attention(q[0], self.work_k, self.work_v)
             x = x + layer.nar_self_attn.o_proj(h.flatten(1)[None])
             x = x + layer.nar_mlp(layer.nar_pre_mlp_layernorm(x))
         return model.llm2vae(model.model.norm(x))[0, 1:-1]
@@ -199,15 +211,13 @@ class CachedNAR:
 
     def close(self):
         self.cache.clear()
-        self.cos = self.sin = self.pos_emb = None
+        self.cos = self.sin = self.pos_emb = self.work_k = self.work_v = None
 
 
 @contextmanager
 def _offload_ar(model, enabled):
     """Temporarily move unused AR modules; this model cannot serve concurrently."""
-    modules = [model.model.embed_tokens, model.lm_head]
-    for layer in model.model.layers:
-        modules.extend((layer.input_layernorm, layer.self_attn, layer.post_attention_layernorm, layer.mlp))
+    modules = ar_modules(model)
     moved = []
     try:
         if enabled:
@@ -216,8 +226,8 @@ def _offload_ar(model, enabled):
                 if device.type != "cpu":
                     module.to(device="cpu")
                     moved.append((module, device))
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            for device in {device for _, device in moved}:
+                empty_cache(device)
         yield
     finally:
         for module, device in moved:
@@ -227,7 +237,7 @@ def _offload_ar(model, enabled):
 @torch.inference_mode()
 def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
                steps=32, context=CONTEXT, attention="sdpa", offload_ar=False,
-               cancelled=None, query_chunk_size=None,
+               cancelled=None, query_chunk_size=None, low_vram=False,
                on_progress: Callable[[int, int], None] | None = None):
     """Return CPU FP32 [frames,64] latents, solving original chunks serially.
 
@@ -242,20 +252,30 @@ def synthesize(model, prefix: Sequence[int], codec: Sequence[int], seed: int,
         raise ValueError("synthesize requires model.eval()")
     chunks = song_chunks(prefix, codec, seed, context)
     output = []
-    for chunk_index, chunk in enumerate(chunks):
-        if cancelled is not None and cancelled():
-            raise InterruptedError("Cancelled before acoustic prefill")
-        engine = CachedNAR(model, chunk, attention, query_chunk_size)
-        # Drop the prefix cache before restoring AR weights, including on
-        # cancellation/failure, to keep the restoration memory peak bounded.
-        with _offload_ar(model, offload_ar):
-            try:
-                progress = None
-                if on_progress is not None:
-                    def progress(completed, total):
-                        on_progress(chunk_index * total + completed, total * len(chunks))
-                output.append(engine.solve(steps, cancelled, on_progress=progress))
-            finally:
-                engine.close()
-        del engine
+    device = model.model.embed_tokens.weight.device
+    try:
+        for chunk_index, chunk in enumerate(chunks):
+            if cancelled is not None and cancelled():
+                raise InterruptedError("Cancelled before acoustic prefill")
+            if low_vram:
+                activate_phase(model, "ar", device)
+            engine = CachedNAR(model, chunk, attention, query_chunk_size)
+            # Drop the prefix cache before restoring AR weights, including on
+            # cancellation/failure, to keep the restoration memory peak bounded.
+            with _offload_ar(model, offload_ar and not low_vram):
+                try:
+                    if low_vram:
+                        activate_phase(model, "nar", device)
+                    progress = None
+                    if on_progress is not None:
+                        def progress(completed, total):
+                            on_progress(chunk_index * total + completed, total * len(chunks))
+                    output.append(engine.solve(steps, cancelled, on_progress=progress))
+                finally:
+                    engine.close()
+            del engine
+    finally:
+        if low_vram:
+            model.to(device="cpu")
+            empty_cache(device)
     return torch.cat(output, dim=0)

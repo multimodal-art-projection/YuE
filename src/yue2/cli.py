@@ -31,7 +31,7 @@ def get_pipe(args):
     config = GenerationConfig.from_dict(json.loads(Path(args.config).read_text(encoding="utf-8"))) if args.config else None
     return YuE2Pipeline.from_pretrained(model, vae=vae, revision=args.revision,
              vae_revision=args.vae_revision, device=args.device, memory_budget_gib=args.budget,
-             backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar,
+             backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar, low_vram=args.low_vram,
              local_files_only=args.offline, generation_config=config,
              vae_core_frames=512 if args.budget <= 12 else 1024,
              progress=not getattr(args, "quiet", False))
@@ -206,6 +206,7 @@ def parser():
         q.add_argument("--backend", choices=("torch", "torch-eager", "vllm"), default="torch")
         q.add_argument("--quantization", choices=("none", "fp8"), default="none")
         q.add_argument("--offload-ar", action="store_true")
+        q.add_argument("--low-vram", action="store_true", help="Keep only the active AR or NAR modules on the accelerator")
         q.add_argument("--offline", action="store_true")
         q.add_argument("--config")
         q.add_argument("--output")
