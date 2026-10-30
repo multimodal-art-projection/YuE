@@ -53,6 +53,29 @@ def test_query_tiling_preserves_all_keys_and_gqa(causal):
     torch.testing.assert_close(result, expected, atol=4e-7, rtol=4e-6)
 
 
+def test_mps_half_causal_query_tiling_masks_first_block(monkeypatch):
+    q = torch.randn(5, 4, 8)
+    k = torch.randn(5, 2, 8)
+    v = torch.randn(5, 2, 8)
+    calls = []
+    original = nar.F.scaled_dot_product_attention
+
+    def capture(query, key, value, *, attn_mask=None, is_causal=False, enable_gqa=False):
+        calls.append((attn_mask, is_causal))
+        return original(query, key, value, attn_mask=attn_mask,
+                        is_causal=is_causal, enable_gqa=enable_gqa)
+
+    monkeypatch.setattr(nar, "_needs_mps_causal_mask", lambda _: True)
+    monkeypatch.setattr(nar.F, "scaled_dot_product_attention", capture)
+    nar.attention(q, k, v, causal=True, query_chunk_size=3)
+
+    assert len(calls) == 2
+    assert all(not is_causal for _, is_causal in calls)
+    torch.testing.assert_close(calls[0][0], torch.ones(3, 3, dtype=torch.bool).tril())
+    expected_second = torch.arange(5)[None, :] <= torch.arange(3, 5)[:, None]
+    torch.testing.assert_close(calls[1][0], expected_second)
+
+
 def test_noise_is_one_cpu_float32_draw_before_original_chunks():
     state = torch.random.get_rng_state().clone()
     chunks = nar.song_chunks([2, 3], list(range(11)), 812, context=15)

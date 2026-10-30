@@ -17,6 +17,11 @@ from transformers.cache_utils import DynamicCache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
+def _needs_mps_causal_mask(tensor: torch.Tensor) -> bool:
+    """Work around the blockwise causal mask bug in older MPS SDPA kernels."""
+    return tensor.device.type == "mps" and tensor.dtype in (torch.float16, torch.bfloat16)
+
+
 def sdpa(query, key, value, *, attn_mask=None, is_causal=False):
     """Use native grouped-query attention, including a portable MPS fallback."""
     grouped = query.shape[1] != key.shape[1]
@@ -26,6 +31,12 @@ def sdpa(query, key, value, *, attn_mask=None, is_causal=False):
         key = key.repeat_interleave(groups, dim=1)
         value = value.repeat_interleave(groups, dim=1)
         grouped = False
+    if is_causal and _needs_mps_causal_mask(query):
+        # PyTorch <= 2.12's MPS half-precision is_causal kernel can expose
+        # future keys in blocks of four query positions. An explicit mask is
+        # correct and keeps CPU/CUDA behavior unchanged.
+        attn_mask = torch.ones(query.shape[-2], key.shape[-2], dtype=torch.bool, device=query.device).tril()
+        is_causal = False
     return F.scaled_dot_product_attention(
         query, key, value, attn_mask=attn_mask, is_causal=is_causal,
         enable_gqa=grouped,
