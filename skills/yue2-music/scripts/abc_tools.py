@@ -30,6 +30,13 @@ TOKEN = re.compile(
     r"(?P<acc>\^\^|__|\^|_|=)?(?P<note>[A-Ga-gz])"
     r"(?P<oct>[,']*)(?P<duration>[0-9]*)(?P<tie>-?)"
 )
+
+TUPLET = re.compile(r"\((?P<p>[2-9])(?::(?P<q>[2-9]))?(?::(?P<r>[2-9]))?")
+DEFAULT_TUPLET_Q = {2: 3, 3: 2, 4: 3, 6: 2, 8: 3}
+
+
+
+
 NATURAL = dict(zip("CDEFGAB", (0, 2, 4, 5, 7, 9, 11)))
 KEYS = {
     **dict(zip(("Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#"), range(-7, 8))),
@@ -95,9 +102,22 @@ def parse_bar(body: str, voice: Voice, unit: Fraction, context: str) -> None:
         offset = length
     else:
         cursor = 0
+        tuplet = None
         while cursor < len(body):
             if body[cursor].isspace():
                 cursor += 1
+                continue
+            tup = TUPLET.match(body, cursor)
+            if tup:
+                fail(tuplet is not None, f"{context}: nested tuplets are not supported")
+                p = int(tup.group("p"))
+                q_text = tup.group("q")
+                fail(q_text is None and p not in DEFAULT_TUPLET_Q,
+                    f"{context}: tuplet ({p} has no default ratio; write ({p}:q explicitly")
+                q = int(q_text) if q_text is not None else DEFAULT_TUPLET_Q[p]
+                r = int(tup.group("r") or p)
+                tuplet = {"remaining": r, "scale": Fraction(q, p)}
+                cursor = tup.end()
                 continue
             match = TOKEN.match(body, cursor)
             fail(match is None, f"{context}: unsupported token at {body[cursor:cursor + 24]!r}")
@@ -118,6 +138,11 @@ def parse_bar(body: str, voice: Voice, unit: Fraction, context: str) -> None:
             units = int(match.group("duration") or "1")
             fail(units not in DURATIONS, f"{context}: unsupported duration {units}; split it into tied supported lengths")
             duration = units * unit * 4
+            if tuplet is not None:
+                duration *= tuplet["scale"]
+                tuplet["remaining"] -= 1
+                if tuplet["remaining"] == 0:
+                    tuplet = None
             fail(offset + duration > length, f"{context}: note/rest exceeds meter duration")
             fail("," in octave and "'" in octave, f"{context}: mixed octave marks")
             if note == "z":
@@ -145,6 +170,7 @@ def parse_bar(body: str, voice: Voice, unit: Fraction, context: str) -> None:
                     voice.notes.append([start + offset, pitch, duration])
                 voice.pending = (pitch, written) if tie else None
             offset += duration
+        fail(tuplet is not None, f"{context}: tuplet bracket left open at the end of the measure")
     fail(offset != length, f"{context}: duration {offset} quarter notes != meter duration {length}")
     voice.bars.append((start, length, voice.meter))
     voice.time += length
