@@ -6,8 +6,8 @@ import json
 import os
 from pathlib import Path
 import sys
-import time
 from .storage import write_json, verify_result, identity
+from .protocol import GenerationConfig, SongRequest, preflight
 
 
 def kit_root():
@@ -26,9 +26,8 @@ def model_paths(args):
 
 def get_pipe(args):
     from .pipeline import YuE2Pipeline
-    from .protocol import GenerationConfig
     model, vae = model_paths(args)
-    config = GenerationConfig.from_dict(json.loads(Path(args.config).read_text(encoding="utf-8"))) if args.config else None
+    config = generation_config(args)
     return YuE2Pipeline.from_pretrained(model, vae=vae, revision=args.revision,
              vae_revision=args.vae_revision, device=args.device, memory_budget_gib=args.budget,
              backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar, low_vram=args.low_vram,
@@ -37,7 +36,50 @@ def get_pipe(args):
              progress=not getattr(args, "quiet", False))
 
 
-def request_kwargs(data, base=Path.cwd()):
+def generation_config(args):
+    if args.config:
+        data = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    elif getattr(args, "model", None) and (Path(args.model) / "pipeline.json").is_file():
+        data = json.loads((Path(args.model) / "pipeline.json").read_text(encoding="utf-8"))["generation_config"]
+    else:
+        return GenerationConfig()
+    return GenerationConfig.from_dict(data)
+
+
+def batch_ids(rows):
+    if not rows or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("Batch input must contain request objects")
+    ids = [row.get("id") for row in rows]
+    if any(not isinstance(x, str) for x in ids) or len(ids) != len(set(ids)):
+        raise ValueError("Every batch request must have a unique string id")
+    for identifier in ids:
+        SongRequest(style="", lyrics="", id=identifier)
+
+
+def validate_requests(args):
+    path = Path(args.request or args.input)
+    rows = ([json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if args.input else [json.loads(path.read_text(encoding="utf-8"))])
+    if args.input:
+        batch_ids(rows)
+    config, results = generation_config(args), []
+    for row in rows:
+        try:
+            request = preflight(request_kwargs(row, path.parent), config)
+            results.append({"id": request.id, "ok": True})
+        except (ValueError, TypeError, OSError, KeyError) as exc:
+            results.append({"ok": False, "error": str(exc), "type": type(exc).__name__})
+    report = {"ok": all(row["ok"] for row in results), "checked": len(results), "results": results}
+    if args.output:
+        write_json(args.output, report)
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0 if report["ok"] else 1
+
+
+def request_kwargs(data, base=None):
+    if not isinstance(data, dict):
+        raise ValueError("Request must be a JSON object")
+    base = Path.cwd() if base is None else base
     allowed = {"style", "tags", "lyrics", "cot", "seed", "abc", "cfg_scale", "id", "abc_sampling", "semantic_sampling"}
     metadata = {"lang", "eval_index", "clip_id", "prompt"}
     unknown = set(data) - allowed - metadata - {"abc_path"}
@@ -55,6 +97,79 @@ def request_kwargs(data, base=Path.cwd()):
         if data["prompt"] != request.text():
             raise ValueError("Historical literal prompt does not match native instruction/style/lyrics")
     return result
+
+
+def export_models(args):
+    """Export a verified, portable local pipeline without generating a song."""
+    directory = Path(args.output)
+    if directory.exists() and any(directory.iterdir()):
+        raise FileExistsError("Export needs an empty output directory")
+    pipe = get_pipe(args)
+    try:
+        pipe.save_pretrained(directory)
+    finally:
+        pipe.close()
+    print(json.dumps({"exported": True, "pipeline": str(directory / "pipeline.json")}))
+    return 0
+
+
+def inspect_run(args):
+    """Verify a saved run without loading generation models."""
+    result = verify_result(args.directory)
+    report = {"artifacts_verified": True, "identity": result["identity"],
+              "sample_rate": result["sample_rate"], "audio_seconds": result["audio_seconds"],
+              "truncated": result["truncated"],
+              "needs_review": any(result["truncated"].values()), "quality_checked": False}
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0
+
+
+def decode_latents(args):
+    """Decode a standalone latent array with only the FP32 VAE loaded."""
+    output = Path(args.output)
+    if output.exists():
+        raise FileExistsError(f"Output already exists: {output}")
+    if output.suffix.lower() not in {".flac", ".wav"}:
+        raise ValueError("Use .flac or .wav")
+    if args.vae_core_frames < 1:
+        raise ValueError("vae-core-frames must be positive")
+    import numpy as np
+    import soundfile as sf
+    from .modeling_vae import YuE2VAE, YuE2VAEConfig
+    from .storage import resolve_model, model_identity
+    source = resolve_model(args.vae, revision=args.vae_revision, local_files_only=args.offline)
+    config = YuE2VAEConfig.from_pretrained(source, local_files_only=True)
+    latent = np.load(args.latent, allow_pickle=False)
+    if latent.dtype.kind != "f" or not np.isfinite(latent).all():
+        raise ValueError("Latents must contain finite floating-point values")
+    if latent.ndim == 2 and latent.shape[1] == config.latent_dim:
+        latent = latent.T[None]
+    if latent.ndim != 3 or latent.shape[:2] != (1, config.latent_dim) or latent.shape[-1] < 1:
+        raise ValueError(f"Expected nonempty [T,{config.latent_dim}] or [1,{config.latent_dim},T] latents")
+    weights = model_identity(source)
+    from .devices import resolve_device, empty_cache
+    device = resolve_device(args.device)
+    model = YuE2VAE.from_pretrained(source, config=config, decoder_only=True,
+                                    device=device, local_files_only=True)
+    try:
+        audio = model.decode_tiled(latent, core_frames=args.vae_core_frames,
+                                   halo_frames=16, output_device="cpu")[0].transpose(0, 1).numpy()
+        if not np.isfinite(audio).all():
+            raise ValueError("VAE produced non-finite audio")
+        audio = audio.clip(-1, 1)
+    finally:
+        model.to("cpu")
+        empty_cache(device)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("xb") as stream:
+        sf.write(stream, audio, config.sample_rate,
+                 format="FLAC" if output.suffix.lower() == ".flac" else "WAV",
+                 subtype="PCM_24" if output.suffix.lower() == ".flac" else "FLOAT")
+    print(json.dumps({"operation": "decode_latents", "output": str(output),
+                      "decoder_only": True, "sample_rate": config.sample_rate,
+                      "audio_seconds": len(audio) / config.sample_rate,
+                      "weights": weights, "quality_checked": False}))
+    return 0
 
 
 def doctor(args):
@@ -109,8 +224,7 @@ def generate(args):
         data = {"id": "first_song", "style": "Mandarin, warm piano, acoustic pop, female vocal",
                 "lyrics": "[Verse]\n晚风轻轻吹过窗前\n你留下的笑还在昨天\n[Chorus]\n让这首歌陪你走远\n把所有想念唱成明天"}
     kwargs = request_kwargs(data, base)
-    from .protocol import SongRequest
-    SongRequest(style="", lyrics="", id=kwargs.get("id", "song"))
+    preflight(kwargs, generation_config(args))
     pipe = get_pipe(args)
     try:
         directory = Path(args.output or "runs/default") / kwargs.get("id", "song")
@@ -150,15 +264,9 @@ def batch(args):
         raise ValueError("The minimal torch pipeline currently supports concurrency=1; do not share a pipeline concurrently")
     path = Path(args.input)
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    ids = [r.get("id") for r in rows]
-    if any(not isinstance(x, str) for x in ids) or len(ids) != len(set(ids)):
-        raise ValueError("Every batch request must have a unique string id")
-    # IDs select filesystem destinations, including failure receipts. Validate
-    # them before loading a model or entering the per-request error handler.
-    from .protocol import SongRequest
-    for identifier in ids:
-        SongRequest(style="", lyrics="", id=identifier)
-    pipe = get_pipe(args)
+    batch_ids(rows)
+    defaults = generation_config(args)
+    pipe = None
     output = Path(args.output or "runs/batch")
     receipts, failures = [], 0
     try:
@@ -170,7 +278,9 @@ def batch(args):
                 kwargs = request_kwargs(row, path.parent)
                 if args.cot is not None:
                     kwargs["cot"] = args.cot
-                request = pipe._request(**{k:v for k,v in kwargs.items() if k not in {"abc_sampling", "semantic_sampling"}})
+                request = preflight(kwargs, defaults)
+                if pipe is None:
+                    pipe = get_pipe(args)
                 cfg = pipe.effective_config(request, kwargs.get("abc_sampling"), kwargs.get("semantic_sampling"))
                 expected = identity({"request": request.to_dict(), "config": cfg, "weights": pipe.weights})
                 if args.resume and (directory / "result.json").exists():
@@ -188,14 +298,15 @@ def batch(args):
             write_json(output / "batch.json", {"complete": len(receipts) == len(rows) and not failures,
                        "expected": len(rows), "failed": failures, "results": receipts})
     finally:
-        pipe.close()
+        if pipe is not None:
+            pipe.close()
     return int(failures > 0)
 
 
 def parser():
     p = argparse.ArgumentParser(description="YuE2: style + lyrics → symbolic plan → song")
     sub = p.add_subparsers(dest="command", required=True)
-    for name in ("doctor", "generate", "batch"):
+    for name in ("doctor", "generate", "batch", "export"):
         q = sub.add_parser(name)
         q.add_argument("--model")
         q.add_argument("--vae", default="standard", help="standard (listening), legacy (paper evaluation), local path or HF repo")
@@ -209,8 +320,10 @@ def parser():
         q.add_argument("--low-vram", action="store_true", help="Keep only the active AR or NAR modules on the accelerator")
         q.add_argument("--offline", action="store_true")
         q.add_argument("--config")
-        q.add_argument("--output")
-        if name == "doctor":
+        q.add_argument("--output", required=name == "export")
+        if name == "export":
+            q.add_argument("--quiet", "--no-progress", action="store_true")
+        elif name == "doctor":
             q.add_argument("--verify-hashes", action="store_true")
         else:
             q.add_argument("--cot", choices=("full", "melody", "off"))
@@ -230,13 +343,31 @@ def parser():
                 q.add_argument("--seed", type=int)
                 q.add_argument("--cfg-scale", type=float)
                 q.add_argument("--stage", choices=("plan", "audio"), default="audio")
+    q = sub.add_parser("inspect", help="Verify saved artifacts without loading models")
+    q.add_argument("directory")
+    q = sub.add_parser("decode", help="Decode standalone latents with only the VAE")
+    q.add_argument("latent")
+    q.add_argument("--vae", required=True, help="Local VAE directory or Hugging Face repository")
+    q.add_argument("--vae-revision")
+    q.add_argument("--offline", action="store_true")
+    q.add_argument("--device", default="cpu")
+    q.add_argument("--vae-core-frames", type=int, default=1024)
+    q.add_argument("--output", required=True)
+    q = sub.add_parser("validate", help="Check request JSON or batch JSONL without models")
+    source = q.add_mutually_exclusive_group(required=True)
+    source.add_argument("--request")
+    source.add_argument("--input")
+    q.add_argument("--config")
+    q.add_argument("--output")
     return p
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parser().parse_args(argv)
-    return {"doctor": doctor, "generate": generate, "batch": batch}[args.command](args)
+    commands = {"doctor": doctor, "generate": generate, "batch": batch, "export": export_models,
+                "inspect": inspect_run, "decode": decode_latents, "validate": validate_requests}
+    return commands[args.command](args)
 
 
 if __name__ == "__main__":

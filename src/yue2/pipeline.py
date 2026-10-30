@@ -103,6 +103,45 @@ class SongResult:
         sf.write(path, self.audio, self.sample_rate, subtype="PCM_24" if path.suffix.lower() == ".flac" else "FLOAT")
         return str(path)
 
+    @classmethod
+    def load(cls, directory, *, expected_identity=None):
+        """Restore verified native artifacts without loading generation models.
+
+        Audio is the stored PCM24 FLAC waveform, not the pre-save float array.
+        Hash verification checks the receipt, not independent provenance or quality.
+        """
+        import soundfile as sf
+        from .storage import verify_result
+        directory = Path(directory)
+        result = verify_result(directory, expected_identity)
+        plan = SymbolicPlan.load(directory)
+        request = json.loads((directory / "request.json").read_text(encoding="utf-8"))
+        if request != plan.request.to_dict():
+            raise ValueError("Saved request does not match the symbolic plan")
+        tokens = np.load(directory / "semantic.npy", allow_pickle=False)
+        if (tokens.ndim != 1 or tokens.dtype.kind not in "iu" or not tokens.size
+                or (tokens < 0).any() or (tokens >= 32768).any()):
+            raise ValueError("Invalid saved semantic token array")
+        latents = np.load(directory / "latent.npy", allow_pickle=False)
+        valid_layout = ((latents.ndim == 2 and latents.shape[1] == 64 and latents.shape[0] > 0)
+                        or (latents.ndim == 3 and latents.shape[:2] == (1, 64) and latents.shape[2] > 0))
+        if not valid_layout or latents.dtype.kind != "f" or not np.isfinite(latents).all():
+            raise ValueError("Invalid saved finite latent array")
+        audio, sample_rate = sf.read(directory / "audio.flac", dtype="float32", always_2d=True)
+        if (audio.shape[1] != 2 or len(audio) < 1 or not np.isfinite(audio).all()
+                or sample_rate != result["sample_rate"]
+                or len(audio) / sample_rate != result["audio_seconds"]):
+            raise ValueError("Saved audio does not match result metadata")
+        truncated = result["truncated"]
+        if (truncated.get("abc") is not plan.truncated
+                or not isinstance(truncated.get("semantic"), bool)):
+            raise ValueError("Saved truncation flags do not match the plan")
+        config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
+        semantic = SemanticResult(plan, tokens.tolist(), result["timing"].get("semantic", {}),
+                                  truncated["semantic"])
+        return cls(audio, sample_rate, semantic, latents, config, result["weights"],
+                   result["timing"], result["identity"])
+
     def save_artifacts(self, directory):
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
@@ -213,37 +252,40 @@ class YuE2Pipeline:
 
     def _load_model(self, for_nar=False):
         loading = self._model is None or next(self._model.parameters()).device != self.device
-        with self._status("Loading model") if loading else nullcontext():
-            if self._model is None:
-                from .modeling_yue2 import YuE2ForCausalLM
-                start = time.perf_counter()
-                self._model = YuE2ForCausalLM.from_pretrained(self.model_dir, local_files_only=True,
-                              torch_dtype=torch.bfloat16, low_cpu_mem_usage=True).eval()
-                self.load_timing["mot_load_seconds"] = time.perf_counter() - start
-            if for_nar and getattr(self._model, "_yue2_fp8_originals", None):
-                from .quantization import restore_ar
-                self._model.to("cpu")
-                restore_ar(self._model)
-                empty_cache(self.device)
-            if self.quantization == "fp8" and not for_nar:
-                from .quantization import prepare_fp8_ar
-                if self.low_vram and not getattr(self._model, "_yue2_fp8_originals", None):
+        try:
+            with self._status("Loading model") if loading else nullcontext():
+                if self._model is None:
+                    from .modeling_yue2 import YuE2ForCausalLM
+                    start = time.perf_counter()
+                    self._model = YuE2ForCausalLM.from_pretrained(self.model_dir, local_files_only=True,
+                                  torch_dtype=torch.bfloat16, low_cpu_mem_usage=True).eval()
+                    self.load_timing["mot_load_seconds"] = time.perf_counter() - start
+                if for_nar and getattr(self._model, "_yue2_fp8_originals", None):
+                    from .quantization import restore_ar
                     self._model.to("cpu")
+                    restore_ar(self._model)
                     empty_cache(self.device)
-                prepare_fp8_ar(self._model, self.device)
-            if self.low_vram:
-                activate_phase(self._model, "ar", self.device)
-            else:
-                self._model.to(self.device)
+                if self.quantization == "fp8" and not for_nar:
+                    from .quantization import prepare_fp8_ar
+                    if self.low_vram and not getattr(self._model, "_yue2_fp8_originals", None):
+                        self._model.to("cpu")
+                        empty_cache(self.device)
+                    prepare_fp8_ar(self._model, self.device)
+                if self.low_vram:
+                    activate_phase(self._model, "ar", self.device)
+                else:
+                    self._model.to(self.device)
+        except BaseException:
+            if self.low_vram and self._model is not None:
+                self._model.to("cpu")
+                empty_cache(self.device)
+            raise
         return self._model
 
-    def _request(self, style=None, lyrics=None, *, tags=None, **kwargs):
-        if style is not None and tags is not None and style != tags:
-            raise ValueError("style and tags are aliases and cannot disagree")
-        style = tags if style is None else style
-        if style is None or lyrics is None:
-            raise ValueError("Provide style and lyrics")
-        return SongRequest(style=style, lyrics=lyrics, **kwargs)
+    @staticmethod
+    def _request(style=None, lyrics=None, *, tags=None, **kwargs):
+        from .protocol import make_request
+        return make_request(style, lyrics, tags=tags, **kwargs)
 
     def _generate(self, prefix, sampling, seed, phase, **kwargs):
         model = self._load_model() if self.backend != "vllm" else None
@@ -344,18 +386,20 @@ class YuE2Pipeline:
         if z.shape[-1] < 1 or not torch.isfinite(z).all():
             raise ValueError("Expected nonempty finite latents")
         from .modeling_vae import YuE2VAE
-        with self._status("Loading audio decoder"):
-            if self._model is not None:
-                self._model.to("cpu")
-            empty_cache(self.device)
-            if vae is not None:
-                model = YuE2VAE.from_pretrained(vae, decoder_only=True, device=self.device)
-            else:
-                if self._vae is None:
-                    self._vae = YuE2VAE.from_pretrained(self.vae_dir, decoder_only=True, device="cpu",
-                                                        local_files_only=True)
-                model = self._vae.to(self.device)
+        model = None
         try:
+            with self._status("Loading audio decoder"):
+                if self._model is not None:
+                    self._model.to("cpu")
+                empty_cache(self.device)
+                if vae is not None:
+                    model = YuE2VAE.from_pretrained(vae, decoder_only=True, device="cpu")
+                else:
+                    if self._vae is None:
+                        self._vae = YuE2VAE.from_pretrained(self.vae_dir, decoder_only=True, device="cpu",
+                                                            local_files_only=True)
+                    model = self._vae
+                model.to(self.device)
             tiles = 1 if full else (z.shape[-1] + self.vae_core_frames - 1) // self.vae_core_frames
             with self._status("Decoding audio", total=tiles, unit="chunks") as status:
                 def report(completed, total):
@@ -377,7 +421,8 @@ class YuE2Pipeline:
                     raise ValueError("VAE produced non-finite audio")
                 return audio[0].float().clamp(-1, 1).T.contiguous().numpy()
         finally:
-            model.to("cpu")
+            if model is not None:
+                model.to("cpu")
             empty_cache(self.device)
 
     def effective_config(self, request, abc_sampling=None, semantic_sampling=None):
@@ -401,7 +446,7 @@ class YuE2Pipeline:
                 "validation_status": "unvalidated"}
 
     def __call__(self, style=None, lyrics=None, *, tags=None, abc_sampling=None,
-                 semantic_sampling=None, cancelled=None, on_token=None, **kwargs):
+                 semantic_sampling=None, cancelled=None, on_token=None, on_progress=None, **kwargs):
         request = self._request(style, lyrics, tags=tags, **kwargs)
         config = self.effective_config(request, abc_sampling, semantic_sampling)
         request_id = identity({"request": request.to_dict(), "config": config, "weights": self.weights})
@@ -409,12 +454,16 @@ class YuE2Pipeline:
         plan = self.plan(request=request, abc_sampling=abc_sampling, cancelled=cancelled, on_token=on_token)
         semantic = self.generate_semantic(plan, sampling=semantic_sampling, cancelled=cancelled, on_token=on_token)
         nar_start = time.perf_counter()
-        latents = self.synthesize(semantic, cancelled=cancelled)
+        latents = self.synthesize(
+            semantic, cancelled=cancelled,
+            on_progress=((lambda done, total: on_progress("nar", done, total)) if on_progress is not None else None))
         nar_seconds = time.perf_counter() - nar_start
         if cancelled is not None and cancelled():
             raise InterruptedError("Cancelled before VAE")
         vae_start = time.perf_counter()
-        audio = self.decode(latents)
+        audio = self.decode(
+            latents,
+            on_progress=((lambda done, total: on_progress("vae", done, total)) if on_progress is not None else None))
         timing = {"abc": plan.timing, "semantic": semantic.timing, "nar_seconds": nar_seconds,
                   "vae_seconds": time.perf_counter() - vae_start, "load": dict(self.load_timing),
                   "e2e_seconds": time.perf_counter() - start}

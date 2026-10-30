@@ -305,3 +305,22 @@ def test_vae_callback_failure_releases_decoder_and_allows_retry():
         pipe.decode(torch.zeros(2, 64), on_progress=stop)
     assert moves[-1] == 'cpu'
     assert pipe.decode(torch.zeros(2, 64)).shape == (16, 2)
+
+
+def test_decoder_transfer_failure_releases_partial_placement():
+    pipe = bare_pipe(False)
+    pipe.device, pipe._model, pipe.vae_core_frames = torch.device('cpu'), None, 1
+    moves = []
+    class Decoder:
+        def to(self, device):
+            moves.append(str(device))
+            if len(moves) == 1:
+                raise RuntimeError('transfer interrupted')
+            return self
+        def decode_tiled(self, latent, **kwargs):
+            return torch.zeros(1, 2, 16)
+    pipe._vae = Decoder()
+    with pytest.raises(RuntimeError, match='transfer interrupted'):
+        pipe.decode(torch.zeros(2, 64))
+    assert moves == ['cpu', 'cpu']
+    assert pipe.decode(torch.zeros(2, 64)).shape == (16, 2)

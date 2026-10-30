@@ -61,3 +61,24 @@ def test_low_vram_respects_cuda_memory_budget(tmp_path, monkeypatch, budget):
     monkeypatch.setattr(pipeline, "model_identity", lambda *args: {})
     pipeline.YuE2Pipeline(tmp_path, tmp_path, memory_budget_gib=budget, low_vram=True, progress=False)
     assert fractions == [min(budget - 2, 22) / 24]
+
+
+def test_partial_phase_transfer_failure_returns_model_to_cpu(monkeypatch):
+    model = YuE2ForCausalLM(tiny_config()).eval()
+    pipe = pipeline.YuE2Pipeline.__new__(pipeline.YuE2Pipeline)
+    pipe.device, pipe.progress, pipe.low_vram = torch.device('cpu'), False, True
+    pipe._model, pipe.quantization = model, 'none'
+    calls = []
+    original = model.to
+    def move(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+    def interrupted(*args):
+        raise RuntimeError('transfer interrupted')
+    monkeypatch.setattr(model, 'to', move)
+    monkeypatch.setattr(pipeline, 'activate_phase', interrupted)
+    with pytest.raises(RuntimeError, match='transfer interrupted'):
+        pipe._load_model()
+    assert calls[-1][0] == ('cpu',)
+    monkeypatch.setattr(pipeline, 'activate_phase', lambda *args: None)
+    assert pipe._load_model() is model
