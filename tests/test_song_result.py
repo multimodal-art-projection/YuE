@@ -62,7 +62,7 @@ def test_load_does_not_import_generation_models(saved,tmp_path):
     directory,_=saved
     boundary=tmp_path/'no-models';boundary.mkdir()
     (boundary/'sitecustomize.py').write_text("import sys\nclass Boundary:\n    def find_spec(self, fullname, path=None, target=None):\n        if fullname in {'yue2.modeling_yue2','yue2.modeling_vae'}: raise RuntimeError('result loading imported a generation model')\nsys.meta_path.insert(0,Boundary())\n")
-    env=dict(os.environ,PYTHONPATH=str(boundary)+os.pathsep+os.environ['PYTHONPATH'])
+    env=dict(os.environ,PYTHONPATH=os.pathsep.join((str(boundary), str(Path(__file__).resolve().parents[1] / 'src'))))
     result=subprocess.run([sys.executable,'-c',"from yue2 import SongResult; import sys; s=SongResult.load(sys.argv[1]); assert s.request_identity=='fixture-id'",str(directory)],env=env,capture_output=True,text=True)
     assert result.returncode==0,result.stderr
 

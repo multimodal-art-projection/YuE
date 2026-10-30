@@ -22,7 +22,7 @@ def native(tmp_path):
 def command(tmp_path,vae,latent,output):
     boundary=tmp_path/'no-ar';boundary.mkdir(exist_ok=True)
     (boundary/'sitecustomize.py').write_text("import sys\nclass Boundary:\n    def find_spec(self, fullname, path=None, target=None):\n        if fullname in {'yue2.pipeline','yue2.modeling_yue2','yue2.tokenization_yue2'}: raise RuntimeError('decoder loaded AR runtime')\nsys.meta_path.insert(0,Boundary())\n")
-    env=dict(os.environ,PYTHONPATH=str(boundary)+os.pathsep+os.environ['PYTHONPATH'],OMP_NUM_THREADS='1')
+    env=dict(os.environ,PYTHONPATH=os.pathsep.join((str(boundary), str(Path(__file__).resolve().parents[1] / 'src'))),OMP_NUM_THREADS='1')
     return subprocess.run([sys.executable,'-m','yue2.cli','decode',str(latent),'--vae',str(vae),
                            '--device','cpu','--offline','--output',str(output)],env=env,capture_output=True,text=True)
 

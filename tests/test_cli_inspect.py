@@ -23,7 +23,7 @@ def saved(tmp_path):
 def inspect(directory,tmp_path):
     boundary=tmp_path/'no-models';boundary.mkdir(exist_ok=True)
     (boundary/'sitecustomize.py').write_text("import sys\nclass Boundary:\n    def find_spec(self, fullname, path=None, target=None):\n        if fullname.split('.')[0] in {'torch','transformers','tiktoken'}: raise RuntimeError('inspection imported model runtime')\nsys.meta_path.insert(0,Boundary())\n")
-    env=dict(os.environ,PYTHONPATH=str(boundary)+os.pathsep+os.environ['PYTHONPATH'])
+    env=dict(os.environ,PYTHONPATH=os.pathsep.join((str(boundary), str(Path(__file__).resolve().parents[1] / 'src'))))
     return subprocess.run([sys.executable,'-m','yue2.cli','inspect',str(directory)],env=env,capture_output=True,text=True)
 
 def test_inspect_verifies_saved_audio_without_model_runtime(saved,tmp_path):
