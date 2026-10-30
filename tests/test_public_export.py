@@ -8,10 +8,8 @@ from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM
 from yue2.modeling_vae import YuE2VAEConfig
 from yue2.storage import copy_model_files, resolve_model
 from test_model import tiny_config
-from transformers import AutoModel, AutoModelForCausalLM
-from yue2.modeling_yue2 import YuE2ForCausalLM
+from transformers import AutoModel
 from yue2.modeling_vae import YuE2VAE
-from yue2.storage import copy_model_files
 from test_model import tiny_config as ar_config
 from test_vae import tiny_config as vae_config
 

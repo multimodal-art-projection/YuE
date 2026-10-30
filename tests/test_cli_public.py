@@ -3,12 +3,11 @@ import json
 import pytest
 from yue2 import cli, pipeline
 from pathlib import Path
-from yue2 import cli
 from yue2.protocol import SongRequest
 from yue2.storage import collect_hashes, identity, write_json
 from types import SimpleNamespace
 import sys
-from yue2 import cli, storage
+from yue2 import storage
 
 
 @pytest.mark.parametrize("vae,repo", [

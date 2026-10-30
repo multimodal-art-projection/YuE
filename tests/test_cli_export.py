@@ -30,7 +30,8 @@ def test_public_export_cli_creates_relocatable_verified_local_pipeline(tmp_path,
     output=tmp_path/'exported'
     result=subprocess.run([sys.executable,'-m','yue2.cli','export','--model',str(model),'--vae',str(vae),
                            '--device','cpu','--offline','--quiet','--output',str(output)],
-                           capture_output=True,text=True)
+                           capture_output=True,text=True, env=dict(os.environ,
+                           PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'src')))
     assert result.returncode==0,result.stderr
     record=json.loads(result.stdout)
     assert record['pipeline']==str(output/'pipeline.json')
@@ -45,7 +46,8 @@ def test_public_export_cli_creates_relocatable_verified_local_pipeline(tmp_path,
         assert pipe.tokenizer.decode(pipe.tokenizer.encode('offline export')) == 'offline export'
 
 def test_export_cli_requires_explicit_output():
-    result=subprocess.run([sys.executable,'-m','yue2.cli','export'],capture_output=True,text=True)
+    result=subprocess.run([sys.executable,'-m','yue2.cli','export'],capture_output=True,text=True, env=dict(os.environ,
+                           PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'src')))
     assert result.returncode==2
     assert 'required' in result.stderr and '--output' in result.stderr
 
