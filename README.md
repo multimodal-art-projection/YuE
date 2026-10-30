@@ -339,7 +339,7 @@ For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https:
 }
 ```
 
-## Contact
+Contact
 
 <table>
   <tr>
