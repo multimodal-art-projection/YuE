@@ -74,6 +74,7 @@ def doctor(args):
                         "compute_capability": [p.major, p.minor]})
     report = {"dependencies_ready": all(versions.values()), "versions": versions,
               "cuda": devices, "mps_available": torch.backends.mps.is_available(),
+              "xpu_available": torch.xpu.is_available(), "rocm": torch.version.hip,
               "model": model, "vae": vae, "default_cot": "full", "default_cfg": {"full": 1., "melody": 1., "off": 1.01},
               "validated": False, "note": "Environment readiness is not quality or real-24GB acceptance."}
     if args.verify_hashes:
