@@ -23,7 +23,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-fast = ["vllm==0.19.0", "triton==3.6.0"]
+cuda = ["torch==2.10.0; sys_platform == 'linux'"]
+xpu = ["torch==2.10.0+xpu; sys_platform == 'linux'", "triton-xpu==3.6.0; sys_platform == 'linux'"]
+fast = ["vllm==0.19.0; sys_platform == 'linux'", "triton==3.6.0; sys_platform == 'linux'"]
 test = ["pytest==9.0.3"]
 
 [project.urls]
@@ -33,6 +35,23 @@ Models = "https://huggingface.co/m-a-p/YuE2-3B"
 
 [project.scripts]
 yue2 = "yue2.cli:main"
+
+[tool.uv]
+conflicts = [
+  [{ extra = "cuda" }, { extra = "xpu" }],
+  # vllm and triton are NVIDIA-targeted; XPU vLLM runs from a dedicated
+  # interpreter/venv (see #257), so the fast extra must not combine with xpu.
+  [{ extra = "xpu" }, { extra = "fast" }],
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-xpu", extra = "xpu" }]
+triton-xpu = [{ index = "pytorch-xpu", extra = "xpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
