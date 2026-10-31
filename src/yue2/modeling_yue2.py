@@ -462,6 +462,8 @@ class YuE2PreTrainedModel(PreTrainedModel):
 class YuE2ForCausalLM(YuE2PreTrainedModel, GenerationMixin):
     """YuE2 model: AR causal LM (generate) + NAR flow matching (ODE)."""
 
+    _tied_weights_keys = ["lm_head.weight"]
+
     def __init__(self, config: YuE2Config):
         super().__init__(config)
         self.model = Backbone(config)
@@ -503,6 +505,8 @@ class YuE2ForCausalLM(YuE2PreTrainedModel, GenerationMixin):
         return_dict: Optional[bool] = None,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+        if labels is not None and (not isinstance(logits_to_keep, int) or logits_to_keep != 0):
+            raise ValueError("Loss computation requires logits_to_keep=0")
         if (input_ids is None) == (inputs_embeds is None):
             raise ValueError("Supply exactly one of input_ids or inputs_embeds")
         use_cache = use_cache if use_cache is not None else getattr(self.config, "use_cache", True)
@@ -517,6 +521,10 @@ class YuE2ForCausalLM(YuE2PreTrainedModel, GenerationMixin):
             cache_position = torch.arange(past_len, past_len + seq_len, device=device)
         else:
             cache_position = cache_position.to(device=device, dtype=torch.long)
+            if use_cache and isinstance(past_key_values, StaticKVCache):
+                append_positions = torch.arange(past_len, past_len + seq_len, device=device)
+                if not torch.equal(cache_position, append_positions):
+                    raise ValueError("StaticKVCache supports append positions only; use Transformers StaticCache for other slots")
         if cache_position.ndim != 1 or cache_position.numel() != seq_len:
             raise ValueError("cache_position must identify each current token's physical cache slot")
         if position_ids is None:

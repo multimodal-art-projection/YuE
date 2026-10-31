@@ -309,18 +309,18 @@ def main() -> int:
     args = cli.parse_args()
     try:
         if args.command == "inspect":
-            data = report(parse(args.score.read_text(encoding="utf-8")))
+            data = report(parse(args.score.read_bytes().decode("utf-8")))
         elif args.command == "strip-chords":
             fail(args.source.resolve() == args.output.resolve(), "Write a new file; do not overwrite the source")
-            output = strip_chords(args.source.read_text(encoding="utf-8"), args.keep_voice)
-            with args.output.open("x", encoding="utf-8") as handle:
+            output = strip_chords(args.source.read_bytes().decode("utf-8"), args.keep_voice)
+            with args.output.open("x", encoding="utf-8", newline="") as handle:
                 handle.write(output)
             print(json.dumps({"output": str(args.output), "kept_voice": args.keep_voice}))
             return 0
         else:
             names = VOICES if args.voices == "both" else (args.voices,)
-            data = compare(parse(args.before.read_text(encoding="utf-8")),
-                           parse(args.after.read_text(encoding="utf-8")), names, args.allow_tempo_change)
+            data = compare(parse(args.before.read_bytes().decode("utf-8")),
+                           parse(args.after.read_bytes().decode("utf-8")), names, args.allow_tempo_change)
         rendered = json.dumps(data, indent=2, ensure_ascii=False, default=json_value) + "\n"
         if args.output:
             fail(args.output.exists(), "Report output already exists; choose a new path")

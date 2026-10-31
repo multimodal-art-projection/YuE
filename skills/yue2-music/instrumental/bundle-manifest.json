@@ -72,8 +72,8 @@
       "bytes": 192
     },
     "scripts/abc_tools.py": {
-      "sha256": "ea04b922dacebec7ad257a2f8d83bdb5dfecb7a23110c1a3121c5c41c313930e",
-      "bytes": 15734
+      "sha256": "2c14660882d6ac4014fd802acc9b4af346567c81a3107eddd2aaf98da342386b",
+      "bytes": 15750
     },
     "scripts/common.py": {
       "sha256": "2929619bd37a176c87c37fdcde9864613d4d5172ca2d89d724aa450a4d7053be",
@@ -84,8 +84,8 @@
       "bytes": 10540
     },
     "scripts/instrumental.py": {
-      "sha256": "bd294e4a57f1100722f7eeb14ed2457e1bc65b7a6cf516c4225fb1c3e7a441b0",
-      "bytes": 27464
+      "sha256": "1c0dc29334e21f1735c11397cd361b147a339c8710cedd4d1fb5455ca40d71e0",
+      "bytes": 27768
     },
     "scripts/instrumentalize.py": {
       "sha256": "a769111656f418cf4298841dc4a7f6be1a50bfae1e66b1bccfaca3eacf948681",
@@ -100,8 +100,8 @@
       "bytes": 27776
     },
     "scripts/transcribe_cover.py": {
-      "sha256": "d88174a8d7cd4d8b9c86f7c6096f3d59796e2dcdb80a8e2878330273a9b52b34",
-      "bytes": 6071
+      "sha256": "ea4bb23c684e1a83a38934c78e2d2385b32daf6bc6668cfb3a81730f4e391704",
+      "bytes": 6300
     },
     "scripts/verify_bundle.py": {
       "sha256": "9c1d93bd276b946fbd422a1c64f0a6aeb8cbf934cf2ca228018749d075ec8f20",

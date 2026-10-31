@@ -56,6 +56,43 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 
 `from_pretrained` accepts local model directories, `revision`, `vae_revision`, `cache_dir`, and `local_files_only=True`. Pin model and VAE revisions for comparisons. Separate GPUs, runtime versions, or sampling settings can change a seeded generation.
 
+## Request checks and saved outputs
+
+`generate` and `batch` validate request fields, output IDs and sampling overrides
+before loading models. A bad batch request is recorded while other requests
+continue. Empty lyrics are accepted for instrumental music. Run the same checks
+separately with:
+
+```bash
+yue2 validate --request examples/song.json
+yue2 validate --input requests.jsonl --config generation.json
+yue2 inspect runs/default/song
+yue2 decode runs/default/song/latent.npy --vae m-a-p/YuE2-Vae --output decoded.wav
+yue2 export --output offline-pipeline --offline
+```
+
+`inspect` verifies saved artifact hashes without models. `decode` loads only the
+FP32 VAE, accepts finite `[T,64]` or `[1,64,T]` latents for the standard decoder,
+and writes FLOAT WAV or PCM24 FLAC. Use `--vae-revision` to pin it and
+`--vae-core-frames` to change the tile size (default 1024, halo 16). Existing
+outputs are refused. `export` copies a verified local pipeline using the Python
+`save_pretrained` interface.
+
+`SongResult.load(directory, expected_identity=...)` restores saved arrays,
+metadata and the PCM24 audio without initializing models. The saved waveform
+can differ from the float waveform before encoding. Artifact hashes check
+consistency with the receipt; they do not assess audio quality or independently
+authenticate provenance.
+
+## Progress callbacks
+
+`pipe(..., on_progress=callback)` calls `callback(stage, completed, total)` for
+`"nar"` midpoint steps and `"vae"` tiles. The separate `synthesize` and `decode`
+methods accept `callback(completed, total)`. Callbacks work with `progress=False`,
+run synchronously, and propagate exceptions after stage cleanup. Counts report
+submitted work; accelerator execution can still be in progress. A pipeline
+processes one request at a time.
+
 ## Listening and evaluation decoders
 
 | Decoder | Use |

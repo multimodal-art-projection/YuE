@@ -3,13 +3,14 @@ import json
 from pathlib import Path
 import sys
 from unittest.mock import patch
-
 import pytest
 import torch
 from transformers import AutoModel
+from yue2.modeling_vae import YuE2VAE, YuE2VAEConfig
+from huggingface_hub.file_download import _create_symlink
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from yue2.modeling_vae import YuE2VAE, YuE2VAEConfig
 
 
 @pytest.fixture(autouse=True)
@@ -150,3 +151,127 @@ def test_encode_posterior_seed(tmp_path):
     b = model.encode(audio, sample=True, generator=torch.Generator().manual_seed(79))
     assert torch.equal(a, b)
     assert not torch.equal(mean, a)
+
+
+@pytest.mark.parametrize('decoder_only', [False,True])
+@pytest.mark.parametrize('mode', ['parent','absolute','nested-parent'])
+def test_indexed_shard_rejects_absolute_and_parent_filenames(tmp_path, mode, decoder_only):
+    torch.set_num_threads(1)
+    directory = tmp_path/'snapshot'
+    original = YuE2VAE(tiny_config()); original.save_pretrained(directory)
+    outside = tmp_path/'outside.safetensors'
+    (directory/'model.safetensors').replace(outside)
+    if mode == 'parent': name = '../outside.safetensors'
+    elif mode == 'absolute': name = str(outside)
+    else:
+        (directory/'shards').mkdir()
+        name = 'shards/../../outside.safetensors'
+    (directory/'model.safetensors.index.json').write_text(json.dumps({'weight_map':{key:name for key in original.state_dict()}}))
+    with pytest.raises(ValueError,match='shard path'):
+        YuE2VAE.from_pretrained(directory,decoder_only=decoder_only,local_files_only=True)
+
+@pytest.mark.parametrize('decoder_only', [False,True])
+def test_safe_nested_indexed_snapshot_preserves_exact_decoder_output(tmp_path,decoder_only):
+    torch.set_num_threads(1); torch.manual_seed(247)
+    directory = tmp_path/'snapshot'
+    original = YuE2VAE(tiny_config()); original.save_pretrained(directory)
+    (directory/'shards').mkdir()
+    (directory/'model.safetensors').replace(directory/'shards/weights.safetensors')
+    (directory/'model.safetensors.index.json').write_text(json.dumps({'weight_map':{key:'shards/weights.safetensors' for key in original.state_dict()}}))
+    loaded = YuE2VAE.from_pretrained(directory,decoder_only=decoder_only,local_files_only=True)
+    latent = torch.randn(1,2,3)
+    assert torch.equal(original.decode(latent), loaded.decode(latent))
+
+
+@pytest.mark.parametrize('decoder_only', [False, True])
+def test_standard_hf_cache_snapshot_can_load_indexed_vae(tmp_path, decoder_only):
+    torch.set_num_threads(1)
+    torch.manual_seed(247)
+    repo_cache = tmp_path/'models--owner--vae'
+    snapshot = repo_cache/'snapshots'/'abc123'
+    model = YuE2VAE(tiny_config())
+    model.save_pretrained(snapshot)
+    blobs = repo_cache/'blobs'; blobs.mkdir()
+    blob = blobs/'weights-content-hash'
+    shard = snapshot/'model-00001-of-00001.safetensors'
+    (snapshot/'model.safetensors').replace(blob)
+    _create_symlink(str(blob), str(shard), new_blob=False)
+    (snapshot/'model.safetensors.index.json').write_text(json.dumps({'weight_map': {name: shard.name for name in model.state_dict()}}))
+    assert shard.is_symlink()
+    loaded = YuE2VAE.from_pretrained(snapshot, decoder_only=decoder_only, local_files_only=True)
+    latent = torch.randn(1,2,3)
+    assert torch.equal(model.decode(latent), loaded.decode(latent))
+
+@pytest.mark.parametrize('decoder_only', [False, True])
+@pytest.mark.parametrize('name', [r'\outside.safetensors', r'C:outside.safetensors', r'..\outside.safetensors'])
+def test_portable_indexed_shard_filenames_reject_windows_root_drive_and_parent(tmp_path, name, decoder_only):
+    if Path(name).name != name:
+        pytest.skip('POSIX literal-backslash fixture exercises portable filename validation')
+    torch.set_num_threads(1)
+    directory = tmp_path/'snapshot'
+    original = YuE2VAE(tiny_config()); original.save_pretrained(directory)
+    (directory/'model.safetensors').replace(directory/name)
+    (directory/'model.safetensors.index.json').write_text(json.dumps({'weight_map':{key:name for key in original.state_dict()}}))
+    with pytest.raises(ValueError,match='shard path'):
+        YuE2VAE.from_pretrained(directory,decoder_only=decoder_only,local_files_only=True)
+
+
+@pytest.mark.parametrize('sample', [False, True])
+def test_vae_encoder_preserves_fp32_posterior_under_cpu_autocast(sample):
+    torch.set_num_threads(1)
+    torch.manual_seed(249)
+    model = YuE2VAE(tiny_config())
+    audio = torch.randn(1, 2, 3 * 1920)
+    expected, expected_info = model.encode(audio, sample=sample, return_info=True,
+                                          generator=torch.Generator().manual_seed(739))
+    with torch.autocast('cpu', dtype=torch.bfloat16):
+        actual, info = model.encode(audio, sample=sample, return_info=True,
+                                    generator=torch.Generator().manual_seed(739))
+    assert actual.dtype == torch.float32
+    assert torch.equal(actual, expected)
+    for name in ('mean', 'scale', 'stdev'):
+        assert info[name].dtype == torch.float32
+        assert torch.equal(info[name], expected_info[name])
+
+def test_vae_decoder_already_preserves_fp32_under_cpu_autocast():
+    torch.set_num_threads(1)
+    torch.manual_seed(924)
+    model = YuE2VAE(tiny_config())
+    latent = torch.randn(1, 2, 3)
+    expected = model.decode(latent)
+    with torch.autocast('cpu', dtype=torch.bfloat16):
+        actual = model.decode(latent)
+    assert actual.dtype == torch.float32
+    assert torch.equal(actual, expected)
+
+
+@pytest.mark.parametrize('inconsistent', ['posterior','encoder-ratio','encoder-channels','decoder-channels'])
+def test_vae_configuration_rejects_incompatible_encode_decode_contracts(inconsistent):
+    torch.set_num_threads(1)
+    original = tiny_config()
+    encoder = dict(original.encoder_config)
+    decoder = dict(original.decoder_config)
+    if inconsistent == 'posterior': encoder['latent_dim'] = 6
+    elif inconsistent == 'encoder-ratio': encoder['strides'] = [1,2,4,4,5,6]
+    elif inconsistent == 'encoder-channels': encoder['in_channels'] = 3
+    else: decoder['out_channels'] = 3
+    with pytest.raises(ValueError,match='Encoder|Audio channels'):
+        config = YuE2VAEConfig(encoder_config=encoder,decoder_config=decoder,latent_dim=2)
+        model = YuE2VAE(config)
+        model(torch.randn(1,2,3*1920))
+
+@torch.inference_mode()
+def test_consistent_tiny_topology_encodes_and_decodes_exact_native_dimensions(tmp_path):
+    torch.set_num_threads(1)
+    torch.manual_seed(123)
+    model = YuE2VAE(tiny_config())
+    audio = torch.randn(1,2,3*1920)
+    latent = model.encode(audio)
+    waveform = model.decode(latent)
+    assert latent.shape == (1,2,3)
+    assert waveform.shape == (1,2,3*1920-64)
+    assert torch.isfinite(waveform).all()
+    model.save_pretrained(tmp_path / 'vae')
+    restored = YuE2VAE.from_pretrained(tmp_path / 'vae',local_files_only=True)
+    assert torch.equal(restored.encode(audio),latent)
+    assert torch.equal(restored.decode(latent),waveform)

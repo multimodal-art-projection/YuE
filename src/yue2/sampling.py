@@ -109,6 +109,8 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
             logits = conditional if cfg_scale == 1.0 else unconditional + cfg_scale * (conditional - unconditional)
             scores = distribution(logits, sampling, history, step, phase, legacy_off)
             if sampling.temperature == 0:
+                if not torch.isfinite(scores.max()).item():
+                    raise FloatingPointError("Greedy decoding requires finite selectable logits")
                 next_id = scores.argmax(-1, keepdim=True)
             else:
                 probabilities = scores.softmax(-1)

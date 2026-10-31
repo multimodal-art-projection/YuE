@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable, Literal
 
 import torch
@@ -327,6 +327,12 @@ class YuE2VAEConfig(PretrainedConfig):
             raise ValueError("Decoder strides do not match downsampling_ratio")
         if self.decoder_config["latent_dim"] != self.latent_dim:
             raise ValueError("Decoder input channels do not match latent_dim")
+        if self.encoder_config["latent_dim"] != 2 * self.latent_dim:
+            raise ValueError("Encoder posterior channels must equal twice latent_dim")
+        if math.prod(self.encoder_config["strides"]) != self.downsampling_ratio:
+            raise ValueError("Encoder strides do not match downsampling_ratio")
+        if self.encoder_config["in_channels"] != self.audio_channels or self.decoder_config["out_channels"] != self.audio_channels:
+            raise ValueError("Audio channels must match encoder input and decoder output")
 
 
 def _dependency_interval(module, low, high):
@@ -440,8 +446,14 @@ class YuE2VAE(PreTrainedModel):
         index = path / "model.safetensors.index.json"
         if index.exists():
             mapping = json.loads(index.read_text(encoding="utf-8"))["weight_map"]
-            files = sorted({name for key, name in mapping.items()
-                            if not decoder_only or key.startswith("decoder.")})
+            files = {name for key, name in mapping.items()
+                     if not decoder_only or key.startswith("decoder.")}
+            for name in files:
+                shard = Path(name)
+                portable = PureWindowsPath(name)
+                if shard.is_absolute() or portable.drive or portable.root or ".." in shard.parts or ".." in portable.parts:
+                    raise ValueError("Invalid VAE shard path: indexed filenames must be relative and contain no parent traversal")
+            files = sorted(files)
         else:
             files = ["model.safetensors"]
         state = {}
@@ -504,7 +516,8 @@ class YuE2VAE(PreTrainedModel):
         if not torch.isfinite(audio).all():
             raise ValueError("Audio contains non-finite values")
         device = next(self.encoder.parameters()).device
-        pre = self.encoder(audio.to(device=device, dtype=torch.float32))
+        with torch.autocast(device_type=device.type, enabled=False):
+            pre = self.encoder(audio.to(device=device, dtype=torch.float32))
         mean, scale = pre.chunk(2, dim=1)
         stdev = torch.nn.functional.softplus(scale) + 1e-4
         if sample:

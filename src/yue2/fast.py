@@ -78,7 +78,10 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
             manifest = json.loads((target / "derivation.json").read_text(encoding="utf-8"))
             if manifest.get("identity") != key or manifest.get("source") != source:
                 raise ValueError("AR cache provenance mismatch; remove this derived cache explicitly")
-            for name, digest in manifest["sha256"].items():
+            hashes = manifest.get("sha256")
+            if not isinstance(hashes, dict) or set(hashes) != {"model.safetensors", "config.json"}:
+                raise ValueError("Incomplete derived AR cache integrity manifest; remove this derived cache explicitly")
+            for name, digest in hashes.items():
                 if sha256_file(target / name) != digest:
                     raise ValueError(f"Corrupt derived AR cache: {name}")
             return target
@@ -92,6 +95,8 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
                         if name in tensors:
                             raise ValueError(f"Duplicate source tensor: {name}")
                         tensors[name] = reader.get_tensor(name)
+                if config.get("tie_word_embeddings") and "lm_head.weight" not in tensors and "model.embed_tokens.weight" in tensors:
+                    tensors["lm_head.weight"] = tensors["model.embed_tokens.weight"].clone()
                 if set(tensors) != wanted:
                     raise ValueError(f"Missing AR tensors: {sorted(wanted - set(tensors))}")
                 save_file(tensors, temp / "model.safetensors", metadata={"format": "pt"})
@@ -269,7 +274,7 @@ class _Worker:
                             on_token(payload["phase"], event["token"])
                         if event.get("event") == "result":
                             return event["ids"], event["timing"], event["truncated"]
-                if self.process.poll() is not None:
+                if self.process.poll() is not None and not self.selector.select(timeout=0):
                     break
             self.log.flush()
             details = self.log_path.read_text(encoding="utf-8", errors="replace")[-12000:]

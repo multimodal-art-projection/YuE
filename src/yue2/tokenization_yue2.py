@@ -13,6 +13,8 @@ class YuE2TextTokenizer:
                  (line.split() for line in self.merge_file.read_bytes().splitlines() if line)}
         if len(ranks) != 151643:
             raise ValueError("Expected checkpoint-native qwen.tiktoken (151643 ordinary tokens)")
+        if set(ranks.values()) != set(range(151643)):
+            raise ValueError("Expected unique contiguous tokenizer ranks in 0..151642")
         specials = ["<|endoftext|>", "<|im_start|>", "<|im_end|>", "<R>", "<S>", "<X>", "<mask>", "<sep>"]
         specials += [f"<extra_{i}>" for i in range(200)]
         specials[204:206] = ["<abc>", "</abc>"]
