@@ -2,8 +2,9 @@
 
 The PyTorch pipeline accepts `--device cuda`, `mps`, `xpu`, or `cpu`. AMD ROCm
 uses PyTorch's `cuda` device name. `auto` selects CUDA/ROCm, MPS, XPU, then CPU.
-The model uses BF16 and the audio decoder uses FP32. Keep PyTorch pinned to
-2.10.0; install the wheel appropriate for your device before `pip install .`.
+The model uses BF16 and the audio decoder uses FP32. PyTorch is pinned to
+2.14.1 on macOS and 2.10.0 elsewhere. Install the wheel appropriate for your
+device before `pip install .`.
 
 | Platform | Execution |
 | --- | --- |
@@ -30,8 +31,8 @@ python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl
 # AMD, Linux with a supported ROCm 7.1 GPU/runtime.
 python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/rocm7.1
 
-# Apple Silicon.
-python -m pip install torch==2.10.0
+# Apple Silicon, macOS 14 or later.
+python -m pip install torch==2.14.1
 
 # Intel, with the Intel GPU driver installed.
 python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/xpu
@@ -42,6 +43,20 @@ platform requirements, see the [PyTorch 2.10 XPU guide](https://docs.pytorch.org
 Availability reported by `doctor` is an environment check; verify an actual
 generation separately. AMD Windows wheels and `gfx1151` require a compatible
 vendor runtime and are not covered by the Linux wheel recipe above.
+
+The macOS pin avoids the older MPS attention errors reported in
+[#176](https://github.com/multimodal-art-projection/YuE/issues/176) and
+[#268](https://github.com/multimodal-art-projection/YuE/issues/268): causal
+prefill leakage and incorrectly typed long-decode scratch buffers. See the
+[upstream causal-attention report](https://github.com/pytorch/pytorch/issues/195910).
+Native Mac generation acceptance on this revision is still pending. The
+optional `fast` extra is for the NVIDIA environment, not macOS.
+
+On NVIDIA builds without compiled FlashAttention, shared attention expands
+grouped KV heads so PyTorch can use memory-efficient SDPA instead of its math
+fallback ([#209](https://github.com/multimodal-art-projection/YuE/issues/209)).
+Changing an attention kernel can change sampled outputs; compare within the
+same runtime and backend when checking reproducibility.
 
 ## Low memory
 

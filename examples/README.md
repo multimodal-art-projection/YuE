@@ -21,6 +21,9 @@ python examples/generate.py --abc-file examples/score-jazz.abc \
 
 The script preserves all native artifacts, refuses an existing output directory, and exits nonzero if generation reports truncation. The seed is fixed in `song.json`; seeds aid comparison but do not guarantee identical output across devices or software versions. Use `--revision` and `--vae-revision` to pin model versions.
 
+The example selects a device automatically. Pass `--device mps`, `--device xpu`
+or another PyTorch device to choose explicitly; see [hardware setup](../docs/hardware.md).
+
 Check the symbolic intervention without a GPU:
 
 ```bash
