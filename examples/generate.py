@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--vae", default="m-a-p/YuE2-Vae")
     parser.add_argument("--revision")
     parser.add_argument("--vae-revision")
+    parser.add_argument("--device", default="auto")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("Choose a fresh output directory to retain each version.")
@@ -30,7 +31,7 @@ def main():
 
     with YuE2Pipeline.from_pretrained(
         args.model, vae=args.vae, revision=args.revision,
-        vae_revision=args.vae_revision, device="cuda",
+        vae_revision=args.vae_revision, device=args.device,
     ) as pipe:
         song = pipe(**request)
         song.save_artifacts(args.output)

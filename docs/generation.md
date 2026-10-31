@@ -22,6 +22,25 @@ with YuE2Pipeline.from_pretrained("m-a-p/YuE2-3B", device="cuda") as pipe:
 
 One pipeline call produces one candidate. The benchmark's candidate selection is a separate evaluation step. `cfg_scale` controls text guidance; defaults are ready to use, while changing sampling or guidance may change quality.
 
+## What the score controls
+
+The native score has two melody parts, `Vocal` and `Ins`, with chord symbols in
+`full` mode. It is not a separate staff or audio stem for every instrument.
+Adding a third ABC voice does not provide an independently controlled part.
+Meter, tempo and note durations condition generation; they are not hard timing
+constraints on the waveform. Check the supplied score before changing sampling
+settings to correct a transcription or rhythm error.
+
+The request has no phoneme override, reference-speaker input, or per-section
+singer identity field. Vocal descriptions in `style` guide generation without
+guaranteeing a particular singer. Adding pronunciation or speaker annotations
+to lyrics does not create a dedicated control channel.
+
+For instrumental music, use empty lyrics and the
+[instrumental workflow](../skills/yue2-music/instrumental/README.md) to move the
+melody into `Ins`. Vocal rests in the score do not guarantee voice-free audio;
+listen to each result before delivering it as instrumental.
+
 The command-line equivalent is:
 
 ```bash
@@ -55,6 +74,12 @@ sf.write("outputs/plan/audio.flac", audio, 48000)
 `save_artifacts()` retains `audio.flac`, `score.abc` when applicable, `plan.json`, semantic tokens, `latent.npy`, effective configuration, timings, model identities, and integrity records. Inspect `result.json` and its `truncated` flags. Saved audio can be playable even when the model hit a token limit. Use a fresh directory for each changed request and retain failures in comparisons.
 
 `from_pretrained` accepts local model directories, `revision`, `vae_revision`, `cache_dir`, and `local_files_only=True`. Pin model and VAE revisions for comparisons. Separate GPUs, runtime versions, or sampling settings can change a seeded generation.
+
+A saved UI workflow and seed alone cannot restore an earlier runtime. Retain
+the integration revision, package versions, model identities, effective request
+and native artifacts. Compare the score, semantic tokens, latents, then audio
+to find the first changed stage. Saved latents let you repeat decoding without
+sampling a new song; matching the decoder and runtime still matters.
 
 ## Request checks and saved outputs
 

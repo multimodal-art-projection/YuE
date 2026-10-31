@@ -29,14 +29,18 @@ def _folded_gqa(query, key, value, attn_mask=None):
 
 
 def sdpa(query, key, value, *, attn_mask=None, is_causal=False):
-    """Use native grouped-query attention, including a portable MPS fallback."""
+    """Use native GQA with portable fallbacks for MPS and CUDA builds."""
     grouped = query.shape[1] != key.shape[1]
     if grouped and query.device.type == "mps":
         if (not is_causal and query.shape[1] * query.shape[2] <= 8 * key.shape[1]
                 and (attn_mask is None or (attn_mask.ndim == 4 and attn_mask.shape[1] == 1
                      and attn_mask.shape[2] in (1, query.shape[2])))):
             return _folded_gqa(query, key, value, attn_mask)
-        # PyTorch's MPS attention does not implement enable_gqa on every release.
+    expand_kv = query.device.type == "mps" or (
+        query.device.type == "cuda" and torch.version.hip is None
+        and not torch.backends.cuda.is_flash_attention_available())
+    if grouped and expand_kv:
+        # Memory-efficient CUDA SDPA needs matching heads on builds without FlashAttention.
         groups = query.shape[1] // key.shape[1]
         key = key.repeat_interleave(groups, dim=1)
         value = value.repeat_interleave(groups, dim=1)

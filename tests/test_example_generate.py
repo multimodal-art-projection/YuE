@@ -16,7 +16,8 @@ SPEC.loader.exec_module(MODULE)
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n", "mixed"], ids=["lf", "crlf", "mixed"])
-def test_example_preserves_external_score(newline, tmp_path, monkeypatch):
+@pytest.mark.parametrize("device", [None, "mps"])
+def test_example_preserves_external_score(newline, device, tmp_path, monkeypatch):
     score = (ROOT / "examples/score.abc").read_bytes().decode("utf-8").replace("\r\n", "\n")
     score = score.replace("% verse", "% verse — mélodie")
     if newline == "mixed":
@@ -36,10 +37,14 @@ def test_example_preserves_external_score(newline, tmp_path, monkeypatch):
     pipe = loader.from_pretrained.return_value.__enter__.return_value
     pipe.return_value = song
     monkeypatch.setitem(sys.modules, "yue2", SimpleNamespace(YuE2Pipeline=loader))
-    monkeypatch.setattr(sys, "argv", [str(ROOT / "examples/generate.py"),
-        "--request", str(request_file), "--abc-file", str(abc_file), "--output", str(output)])
+    argv = [str(ROOT / "examples/generate.py"), "--request", str(request_file),
+            "--abc-file", str(abc_file), "--output", str(output)]
+    if device:
+        argv += ["--device", device]
+    monkeypatch.setattr(sys, "argv", argv)
 
     assert MODULE.main() == 0
+    assert loader.from_pretrained.call_args.kwargs["device"] == (device or "auto")
     pipe.assert_called_once_with(**request, abc=score)
     song.save_artifacts.assert_called_once_with(output)
     assert abc_file.read_bytes() == score.encode("utf-8")

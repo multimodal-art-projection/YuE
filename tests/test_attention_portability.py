@@ -10,6 +10,31 @@ from yue2.modeling_yue2 import _folded_gqa, sdpa, YuE2ForCausalLM, StaticKVCache
 from test_model import tiny_config
 
 
+@pytest.mark.skipif(not torch.cuda.is_available() or torch.version.hip is not None,
+                    reason="requires NVIDIA CUDA")
+@pytest.mark.parametrize("causal", [False, True])
+@pytest.mark.parametrize("chunk_size", [None, 128])
+def test_nar_without_flash_uses_efficient_gqa(monkeypatch, causal, chunk_size):
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+    from yue2.nar import attention
+
+    torch.manual_seed(209)
+    q = torch.randn(257, 16, 128, device="cuda", dtype=torch.bfloat16)
+    k, v = [torch.randn(257 if causal else 513, 8, 128, device="cuda",
+                        dtype=torch.bfloat16) for _ in range(2)]
+    with sdpa_kernel(SDPBackend.MATH):
+        expected = F.scaled_dot_product_attention(
+            q.transpose(0, 1)[None].float(), k.transpose(0, 1)[None].float(),
+            v.transpose(0, 1)[None].float(), is_causal=causal, enable_gqa=True,
+        )[0].transpose(0, 1)
+    monkeypatch.setattr(torch.backends.cuda, "is_flash_attention_available", lambda: False)
+    monkeypatch.setattr(torch.backends.cudnn, "deterministic", True)
+    # Exclude math and cuDNN: the call must actually execute the efficient kernel.
+    with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+        actual = attention(q, k, v, causal=causal, query_chunk_size=chunk_size)
+    torch.testing.assert_close(actual.float(), expected, rtol=1e-2, atol=2e-3)
+
+
 @pytest.mark.parametrize("rows", [1, 2, 4])
 @pytest.mark.parametrize("mask_kind", [None, "bool", "float"])
 def test_query_folding_matches_gqa_without_expanding_kv(rows, mask_kind, monkeypatch):
@@ -97,19 +122,22 @@ def test_mps_causal_prefill_has_no_future_leak(dtype):
 
 
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="requires Apple MPS")
-def test_mps_long_decode_from_cold_process():
+@pytest.mark.parametrize("lengths", ["1023,1024,1025,3000", "3000,1000,3000"])
+def test_mps_long_decode_from_cold_process(lengths):
     import os
     import subprocess
     import sys
     code = '''
 import torch
 import torch.nn.functional as F
+import sys
 from yue2.modeling_yue2 import sdpa
 torch.manual_seed(3)
 q = torch.randn(1, 16, 1, 128).bfloat16()
-k, v = [torch.randn(1, 8, 3000, 128).bfloat16() for _ in range(2)]
-expected = F.scaled_dot_product_attention(q.float(), k.float(), v.float(), enable_gqa=True)
-actual = sdpa(q.to("mps"), k.to("mps"), v.to("mps")).float().cpu()
-torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+for length in map(int, sys.argv[1].split(",")):
+    k, v = [torch.randn(1, 8, length, 128).bfloat16() for _ in range(2)]
+    expected = F.scaled_dot_product_attention(q.float(), k.float(), v.float(), enable_gqa=True)
+    actual = sdpa(q.to("mps"), k.to("mps"), v.to("mps")).float().cpu()
+    torch.testing.assert_close(actual, expected, atol=2e-3, rtol=2e-2)
 '''
-    subprocess.run([sys.executable, "-c", code], env=dict(os.environ), check=True, timeout=120)
+    subprocess.run([sys.executable, "-c", code, lengths], env=dict(os.environ), check=True, timeout=120)
