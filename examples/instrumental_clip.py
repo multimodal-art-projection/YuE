@@ -14,6 +14,7 @@ def main():
     parser.add_argument("--seconds", type=float, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--low-vram", action="store_true")
     args = parser.parse_args()
     if (
         not math.isfinite(args.seconds * 48000)
@@ -35,7 +36,7 @@ def main():
     from yue2.storage import write_json
     import soundfile as sf
 
-    with YuE2Pipeline.from_pretrained(device=args.device) as pipe:
+    with YuE2Pipeline.from_pretrained(device=args.device, low_vram=args.low_vram) as pipe:
         song = pipe(**request)
         song.save_artifacts(args.output / "native")
     samples = round(args.seconds * song.sample_rate)

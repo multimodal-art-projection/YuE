@@ -11,6 +11,32 @@ import torch
 import torch.nn.functional as F
 
 
+@torch.inference_mode()
+def attention_capabilities(model):
+    """Check compiled kernels and the actual device; registered ops can be stubs."""
+    weight, config = model.model.embed_tokens.weight, model.config
+    result = {"flash": False, "cudnn": False, "sdpa": True}
+    if (weight.device.type != "cuda" or torch.version.hip is not None
+            or weight.dtype not in {torch.bfloat16, torch.float16} or config.head_dim % 8):
+        return result
+    q = weight.new_zeros((1, config.num_attention_heads, 1, config.head_dim))
+    kv = weight.new_zeros((1, config.num_key_value_heads, 1, config.head_dim))
+    params = torch.backends.cuda.SDPAParams(q, kv, kv, None, 0.0, False,
+                                           config.num_attention_heads != config.num_key_value_heads)
+    op = getattr(torch.ops.aten, "_flash_attention_forward", None)
+    result["flash"] = bool(config.head_dim <= 256 and op is not None
+        and "seqused_k" in str(op.default._schema)
+        and torch.backends.cuda.is_flash_attention_available()
+        and torch.backends.cuda.can_use_flash_attention(params))
+    if torch.backends.cudnn.is_available():
+        # cuDNN rejects a single key; every graph has prefix + generation capacity >= 2.
+        kv = weight.new_zeros((1, config.num_attention_heads, 2, config.head_dim))
+        mask = torch.ones((1, 1, 1, 2), dtype=torch.bool, device=weight.device)
+        params = torch.backends.cuda.SDPAParams(q, kv, kv, mask, 0.0, False, False)
+        result["cudnn"] = bool(torch.backends.cuda.can_use_cudnn_attention(params))
+    return result
+
+
 class _PrefixCache:
     """A single branch view used only by the original eager HF prefill."""
     def __init__(self, keys, values, branch):
@@ -71,18 +97,11 @@ class GraphAR:
         self.capture, self.graph, self.output = capture, None, None
         if attention_backend not in {"auto", "flash", "cudnn", "sdpa"}:
             raise ValueError("attention_backend must be auto, flash, cudnn, or sdpa")
-        fused = self.device.type == "cuda" and self.dtype in {torch.bfloat16, torch.float16} and config.head_dim % 8 == 0
-        flash = fused and config.head_dim <= 256 and hasattr(torch.ops.aten, "_flash_attention_forward") and (
-            "seqused_k" in str(torch.ops.aten._flash_attention_forward.default._schema))
-        # Torch 2.10 is pinned by the package. Its native variable-length FA
-        # accepts GPU effective lengths; the public masked SDPA can select a
-        # much slower math kernel. Keep a cuDNN/public-SDPA fallback explicit.
+        available = attention_capabilities(model)
         if attention_backend == "auto":
-            attention_backend = "flash" if flash else "cudnn" if fused and torch.backends.cudnn.is_available() else "sdpa"
-        if attention_backend == "flash" and not flash:
-            raise ValueError("Pinned PyTorch variable-length CUDA FlashAttention is unavailable")
-        if attention_backend == "cudnn" and not (fused and torch.backends.cudnn.is_available()):
-            raise ValueError("cuDNN attention requires a supported CUDA dtype/head dimension")
+            attention_backend = next(name for name in ("flash", "cudnn", "sdpa") if available[name])
+        elif not available[attention_backend]:
+            raise ValueError(f"Requested {attention_backend} attention is unavailable for this device and dtype")
         self.attention_backend = attention_backend
         self.ready, self.closed, self.steps = False, False, 0
         # Sequence-major layout makes the packed FA view contiguous without
@@ -150,9 +169,12 @@ class GraphAR:
             elif self.attention_backend == "cudnn":
                 from torch.nn.attention import SDPBackend, sdpa_kernel
                 with sdpa_kernel(SDPBackend.CUDNN_ATTENTION):
-                    h = F.scaled_dot_product_attention(q.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2),
-                            attn_mask=visible, is_causal=False,
-                            enable_gqa=config.num_attention_heads != config.num_key_value_heads).transpose(1, 2)
+                    groups = config.num_attention_heads // config.num_key_value_heads
+                    # Adjacent query heads share one KV head; cuDNN needs matching heads.
+                    k = keys.transpose(1, 2).repeat_interleave(groups, dim=1)
+                    v = values.transpose(1, 2).repeat_interleave(groups, dim=1)
+                    h = F.scaled_dot_product_attention(q.transpose(1, 2), k, v,
+                            attn_mask=visible, is_causal=False).transpose(1, 2)
             else:
                 h = F.scaled_dot_product_attention(q.transpose(1, 2), keys.transpose(1, 2), values.transpose(1, 2),
                             attn_mask=visible, is_causal=False,

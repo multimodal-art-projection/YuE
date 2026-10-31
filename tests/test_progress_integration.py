@@ -21,6 +21,7 @@ class Tokenizer:
 
 def bare_pipe(enabled=True, backend='torch-eager'):
     pipe = object.__new__(YuE2Pipeline)
+    pipe.low_vram = False
     pipe.progress, pipe.backend = enabled, backend
     pipe.tokenizer = Tokenizer()
     pipe.generation_config = GenerationConfig()
@@ -128,10 +129,10 @@ def test_pipeline_passes_acoustic_callbacks_only_when_enabled(enabled, monkeypat
     expected = torch.arange(128, dtype=torch.float32).reshape(2, 64)
     seen = []
 
-    def synthesize(model, prefix, tokens, seed, *, steps, context, offload_ar, cancelled, on_progress):
+    def synthesize(model, prefix, tokens, seed, *, steps, context, offload_ar, cancelled, on_progress, low_vram):
         seen.append(on_progress is not None)
         assert steps == pipe.generation_config.ode_steps and context == pipe.generation_config.context
-        assert tokens == [1, 2] and seed == 42 and offload_ar is False
+        assert tokens == [1, 2] and seed == 42 and offload_ar is False and low_vram is False
         if on_progress is not None:
             on_progress(1, steps)
             on_progress(steps, steps)
@@ -176,7 +177,7 @@ def test_external_on_progress_is_forwarded_independently_of_display(enabled, mon
     expected = torch.arange(128, dtype=torch.float32).reshape(2, 64)
     seen, external = [], []
 
-    def synthesize(model, prefix, tokens, seed, *, steps, context, offload_ar, cancelled, on_progress):
+    def synthesize(model, prefix, tokens, seed, *, steps, context, offload_ar, cancelled, on_progress, low_vram):
         seen.append(on_progress is not None)
         if on_progress is not None:
             on_progress(1, steps)

@@ -17,10 +17,25 @@ from transformers.cache_utils import DynamicCache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
+def _folded_gqa(query, key, value, attn_mask=None):
+    """Fold short noncausal query groups into rows, retaining the original KV storage."""
+    batch, heads, rows, dim = query.shape
+    groups = heads // key.shape[1]
+    if attn_mask is not None and attn_mask.shape[-2] != 1:
+        attn_mask = attn_mask.repeat(1, 1, groups, 1)
+    output = F.scaled_dot_product_attention(
+        query.reshape(batch, key.shape[1], groups * rows, dim), key, value, attn_mask=attn_mask)
+    return output.reshape(batch, heads, rows, dim)
+
+
 def sdpa(query, key, value, *, attn_mask=None, is_causal=False):
     """Use native grouped-query attention, including a portable MPS fallback."""
     grouped = query.shape[1] != key.shape[1]
     if grouped and query.device.type == "mps":
+        if (not is_causal and query.shape[1] * query.shape[2] <= 8 * key.shape[1]
+                and (attn_mask is None or (attn_mask.ndim == 4 and attn_mask.shape[1] == 1
+                     and attn_mask.shape[2] in (1, query.shape[2])))):
+            return _folded_gqa(query, key, value, attn_mask)
         # PyTorch's MPS attention does not implement enable_gqa on every release.
         groups = query.shape[1] // key.shape[1]
         key = key.repeat_interleave(groups, dim=1)
@@ -204,7 +219,13 @@ class Attention(nn.Module):
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
 
         if past_key_value is not None:
-            k, v = past_key_value.update(k, v, layer_idx, {"cache_position": cache_position})
+            cache_kwargs = {"cache_position": cache_position, "fixed_shape": attention_mask is None}
+            # The append-only cache tracks used lengths on the host. No scalar
+            # device read is needed here, including on CUDA and XPU.
+            used = past_key_value.get_seq_length() + T if isinstance(past_key_value, StaticKVCache) else None
+            k, v = past_key_value.update(k, v, layer_idx, cache_kwargs)
+            if used is not None and k.shape[2] > used and attention_mask is None:
+                attention_mask = torch.arange(k.shape[2], device=x.device)[None, None, None, :] < used
 
         if attention_mask is not None:
             out = sdpa(q, k, v, attn_mask=attention_mask[..., :k.shape[2]])
@@ -377,6 +398,17 @@ class StaticKVCache:
             for _ in range(num_layers)
         ]
 
+    MPS_DECODE_BUCKET = 2048
+
+    def _bucket_decode(self, key_states):
+        return key_states.device.type == "mps"
+
+    def _mps_decode_length(self, used):
+        bucket = self.MPS_DECODE_BUCKET
+        while bucket < used:
+            bucket *= 2
+        return min(bucket, self.max_seq_len)
+
     def get_seq_length(self, layer_idx=0) -> int:
         return self._seen_tokens
 
@@ -390,7 +422,9 @@ class StaticKVCache:
         self.value_cache[layer_idx][:, :, pos:end] = value_states
         if layer_idx == self.num_layers - 1:
             self._seen_tokens = end
-        return self.key_cache[layer_idx][:, :, :end], self.value_cache[layer_idx][:, :, :end]
+        fixed_shape = (cache_kwargs or {}).get("fixed_shape", True)
+        length = self._mps_decode_length(end) if T == 1 and fixed_shape and self._bucket_decode(key_states) else end
+        return self.key_cache[layer_idx][:, :, :length], self.value_cache[layer_idx][:, :, :length]
 
     def reset(self):
         self._seen_tokens = 0

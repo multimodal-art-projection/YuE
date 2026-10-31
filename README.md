@@ -106,6 +106,7 @@ The staged Python API exposes `plan()` → `generate_semantic()` → `synthesize
 
 **Linux · Python 3.12 · NVIDIA GPU with BF16 support and 24 GB VRAM.** YuE2 produces 48 kHz stereo audio without quantization. Model files download from Hugging Face on first use.
 
+For experimental low-memory, Windows, AMD, Apple Silicon and Intel paths, see [hardware setup and validation scope](docs/hardware.md).
 
 ```bash
 git clone https://github.com/multimodal-art-projection/YuE.git

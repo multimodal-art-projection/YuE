@@ -5,6 +5,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import dataclasses
 import json
+import math
 import time
 import numpy as np
 import torch
@@ -14,6 +15,8 @@ from .storage import resolve_model, model_identity, identity, write_json, collec
 from .tokenization_yue2 import YuE2TextTokenizer
 from .sampling import generate_tokens, synchronize
 from .progress import Progress
+from .devices import resolve_device, empty_cache
+from .placement import activate_phase
 
 
 @dataclass
@@ -142,7 +145,7 @@ class SongResult:
 class YuE2Pipeline:
     def __init__(self, model_dir, vae_dir, *, device="auto", memory_budget_gib=24,
                  backend="torch", generation_config=None, verify_hashes=True,
-                 vae_core_frames=None, quantization="none", offload_ar=False, progress=True):
+                 vae_core_frames=None, quantization="none", offload_ar=False, low_vram=False, progress=True):
         if not isinstance(progress, bool):
             raise TypeError("progress must be True or False")
         self.progress = progress
@@ -150,13 +153,12 @@ class YuE2Pipeline:
             raise ValueError("backend must be torch, torch-eager, or vllm")
         if quantization not in {"none", "fp8"}:
             raise ValueError("quantization must be none or fp8")
-        if not 0 < memory_budget_gib:
-            raise ValueError("memory_budget_gib must be positive")
-        if device == "auto":
-            device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-        self.device = torch.device(device)
-        if self.device.type == "cuda" and self.device.index is None:
-            self.device = torch.device("cuda", torch.cuda.current_device())
+        if not math.isfinite(memory_budget_gib) or not 0 < memory_budget_gib:
+            raise ValueError("memory_budget_gib must be finite and positive")
+        if low_vram and backend == "vllm":
+            raise ValueError("low_vram requires backend='torch' or 'torch-eager'")
+        self.low_vram = low_vram
+        self.device = resolve_device(device)
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
         torch.backends.cuda.matmul.allow_tf32 = False
@@ -230,17 +232,34 @@ class YuE2Pipeline:
 
     def _load_model(self, for_nar=False):
         loading = self._model is None or next(self._model.parameters()).device != self.device
-        with self._status("Loading model") if loading else nullcontext():
-            if self._model is None:
-                from .modeling_yue2 import YuE2ForCausalLM
-                start = time.perf_counter()
-                self._model = YuE2ForCausalLM.from_pretrained(self.model_dir, local_files_only=True,
-                              torch_dtype=torch.bfloat16, low_cpu_mem_usage=True).eval()
-                self.load_timing["mot_load_seconds"] = time.perf_counter() - start
-            if self.quantization == "fp8" and not for_nar:
-                from .quantization import prepare_fp8_ar
-                prepare_fp8_ar(self._model, self.device)
-            self._model.to(self.device)
+        try:
+            with self._status("Loading model") if loading else nullcontext():
+                if self._model is None:
+                    from .modeling_yue2 import YuE2ForCausalLM
+                    start = time.perf_counter()
+                    self._model = YuE2ForCausalLM.from_pretrained(self.model_dir, local_files_only=True,
+                                  torch_dtype=torch.bfloat16, low_cpu_mem_usage=True).eval()
+                    self.load_timing["mot_load_seconds"] = time.perf_counter() - start
+                if for_nar and getattr(self._model, "_yue2_fp8_originals", None):
+                    from .quantization import restore_ar
+                    self._model.to("cpu")
+                    restore_ar(self._model)
+                    empty_cache(self.device)
+                if self.quantization == "fp8" and not for_nar:
+                    from .quantization import prepare_fp8_ar
+                    if self.low_vram and not getattr(self._model, "_yue2_fp8_originals", None):
+                        self._model.to("cpu")
+                        empty_cache(self.device)
+                    prepare_fp8_ar(self._model, self.device)
+                if self.low_vram:
+                    activate_phase(self._model, "ar", self.device)
+                else:
+                    self._model.to(self.device)
+        except BaseException:
+            if self.low_vram and self._model is not None:
+                self._model.to("cpu")
+                empty_cache(self.device)
+            raise
         return self._model
 
     def _generate(self, prefix, sampling, seed, phase, **kwargs):
@@ -305,9 +324,6 @@ class YuE2Pipeline:
             raise TypeError("Pass the SemanticResult returned by generate_semantic()")
         if token_prefixes(semantic.plan.request, self.tokenizer, semantic.plan.abc_ids) != semantic.plan.prefix:
             raise ValueError("Semantic result does not retain the request's exact prefix")
-        if self.quantization != "none":
-            from .quantization import restore_ar
-            restore_ar(self._model)
         model = self._load_model(for_nar=True)
         with self._status("Synthesizing audio", unit="steps") as status:
             def report(completed, total):
@@ -319,7 +335,8 @@ class YuE2Pipeline:
                                 semantic.plan.request.seed, steps=self.generation_config.ode_steps,
                                 context=self.generation_config.context, offload_ar=self.offload_ar,
                                 cancelled=cancelled,
-                                on_progress=report if (self.progress or on_progress is not None) else None)
+                                on_progress=report if (self.progress or on_progress is not None) else None,
+                                low_vram=self.low_vram)
             return result.detach().float().cpu().numpy()
 
     def close(self):
@@ -327,8 +344,7 @@ class YuE2Pipeline:
             from .fast import close_vllm
             close_vllm(self)
         self._model, self._vae = None, None
-        if self.device.type == "cuda":
-            torch.cuda.empty_cache()
+        empty_cache(self.device)
 
     def __enter__(self):
         return self
@@ -350,8 +366,7 @@ class YuE2Pipeline:
             with self._status("Loading audio decoder"):
                 if self._model is not None:
                     self._model.to("cpu")
-                if self.device.type == "cuda":
-                    torch.cuda.empty_cache()
+                empty_cache(self.device)
                 if vae is not None:
                     model = YuE2VAE.from_pretrained(vae, decoder_only=True, device="cpu")
                 else:
@@ -383,8 +398,7 @@ class YuE2Pipeline:
         finally:
             if model is not None:
                 model.to("cpu")
-            if self.device.type == "cuda":
-                torch.cuda.empty_cache()
+            empty_cache(self.device)
 
     def effective_config(self, request, abc_sampling=None, semantic_sampling=None):
         config = self.generation_config.to_dict()
@@ -402,7 +416,7 @@ class YuE2Pipeline:
                 "model_dtype": "bfloat16", "vae_dtype": "float32", "vae_decode": "halo_crop",
                 "vae_core_frames": self.vae_core_frames, "vae_halo_frames": 16,
                 "device": str(self.device), "memory_budget_gib": self.memory_budget_gib,
-                "offload_ar": self.offload_ar, "runtime_sha256": self.runtime_sha256,
+                "offload_ar": self.offload_ar, "low_vram": self.low_vram, "runtime_sha256": self.runtime_sha256,
                 "decoder_release": json.loads((self.vae_dir / "config.json").read_text(encoding="utf-8")).get("release_variant"),
                 "validation_status": "unvalidated"}
 

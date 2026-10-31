@@ -247,6 +247,44 @@ def test_offload_restores_modules_when_generation_raises(monkeypatch):
     assert all(module.moves == ["cpu", "meta"] for module in modules)
 
 
+@pytest.mark.parametrize('failure', [None, 'callback', 'cancelled'])
+def test_low_vram_multichunk_cleanup_and_retry_match_default(model, monkeypatch, failure):
+    monkeypatch.setattr(nar, 'CODEC_OFFSET', 8)
+    monkeypatch.setattr(nar, 'MUSIC_END', 7)
+    args = (model, [2, 3], [1] * 11, 42)
+    expected = nar.synthesize(*args, steps=2, context=15)
+    progress = []
+    def report(done, total):
+        progress.append((done, total))
+        if failure == 'callback':
+            raise RuntimeError('callback interrupted')
+    cancelled = lambda: failure == 'cancelled' and bool(progress)
+    if failure:
+        with pytest.raises((RuntimeError, InterruptedError)):
+            nar.synthesize(*args, steps=2, context=15, low_vram=True,
+                           on_progress=report, cancelled=cancelled)
+    else:
+        actual = nar.synthesize(*args, steps=2, context=15, low_vram=True, on_progress=report)
+        torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+        assert progress[-1] == (6, 6)
+    assert all(p.device.type == 'cpu' for p in model.parameters())
+    torch.testing.assert_close(nar.synthesize(*args, steps=2, context=15, low_vram=True), expected, atol=0, rtol=0)
+
+
+def test_nar_reuses_one_work_buffer_across_layers_and_steps(model):
+    chunk = nar.Chunk([2, 3, 4], torch.randn(3, 64))
+    engine = nar.CachedNAR(model, chunk)
+    try:
+        engine.velocity(chunk.noise, 1.)
+        pointers = (engine.work_k.data_ptr(), engine.work_v.data_ptr())
+        engine.velocity(chunk.noise, .5)
+        assert pointers == (engine.work_k.data_ptr(), engine.work_v.data_ptr())
+        assert engine.work_k.shape[0] == engine.visible_length + engine.nar_length
+    finally:
+        engine.close()
+    assert engine.work_k is engine.work_v is None
+
+
 def test_synthesis_releases_cache_when_offload_transfer_fails(model, monkeypatch):
     monkeypatch.setattr(nar, "CODEC_OFFSET", 8)
     monkeypatch.setattr(nar, "MUSIC_END", 7)

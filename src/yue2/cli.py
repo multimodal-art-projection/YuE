@@ -31,7 +31,7 @@ def get_pipe(args):
     config = generation_config(args)
     return YuE2Pipeline.from_pretrained(model, vae=vae, revision=args.revision,
              vae_revision=args.vae_revision, device=args.device, memory_budget_gib=args.budget,
-             backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar,
+             backend=args.backend, quantization=args.quantization, offload_ar=args.offload_ar, low_vram=args.low_vram,
              local_files_only=args.offline, generation_config=config,
              vae_core_frames=512 if args.budget <= 12 else 1024,
              progress=not getattr(args, "quiet", False))
@@ -152,8 +152,8 @@ def decode_latents(args):
     if latent.ndim != 3 or latent.shape[:2] != (1, config.latent_dim) or latent.shape[-1] < 1:
         raise ValueError(f"Expected nonempty [T,{config.latent_dim}] or [1,{config.latent_dim},T] latents")
     weights = model_identity(source)
-    import torch
-    device = torch.device(args.device)
+    from .devices import resolve_device, empty_cache
+    device = resolve_device(args.device)
     model = YuE2VAE.from_pretrained(source, config=config, decoder_only=True,
                                     device=device, local_files_only=True)
     try:
@@ -164,8 +164,7 @@ def decode_latents(args):
         audio = audio.clip(-1, 1)
     finally:
         model.to("cpu")
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
+        empty_cache(device)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("xb") as stream:
         sf.write(stream, audio, config.sample_rate,
@@ -195,6 +194,7 @@ def doctor(args):
                         "compute_capability": [p.major, p.minor]})
     report = {"dependencies_ready": all(versions.values()), "versions": versions,
               "cuda": devices, "mps_available": torch.backends.mps.is_available(),
+              "xpu_available": torch.xpu.is_available(), "rocm": torch.version.hip,
               "model": model, "vae": vae, "default_cot": "full", "default_cfg": {"full": 1., "melody": 1., "off": 1.01},
               "validated": False, "note": "Environment readiness is not quality or real-24GB acceptance."}
     if args.verify_hashes:
@@ -321,6 +321,7 @@ def parser():
         q.add_argument("--backend", choices=("torch", "torch-eager", "vllm"), default="torch")
         q.add_argument("--quantization", choices=("none", "fp8"), default="none")
         q.add_argument("--offload-ar", action="store_true")
+        q.add_argument("--low-vram", action="store_true", help="Keep only the active AR or NAR modules on the accelerator")
         q.add_argument("--offline", action="store_true")
         q.add_argument("--config")
         q.add_argument("--output", required=name == "export")

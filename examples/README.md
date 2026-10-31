@@ -37,7 +37,7 @@ then run:
 
 ```bash
 python examples/instrumental_clip.py --prepared outputs/prepared \
-  --seconds 10 --device auto --output outputs/clip
+  --seconds 10 --device auto --low-vram --output outputs/clip
 ```
 
 This generates the complete request and crops a preview afterward; it does not
