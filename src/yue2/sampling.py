@@ -5,12 +5,7 @@ import torch
 from .protocol import EOD, ABC_END, MUSIC_END, CODEC_OFFSET, CODEC_SIZE, CONTEXT
 
 
-def synchronize(device):
-    device = torch.device(device)
-    if device.type == "cuda":
-        torch.cuda.synchronize(device)
-    elif device.type == "mps":
-        torch.mps.synchronize()
+from .devices import synchronize
 
 
 def window_penalty(logits, recent_ids, penalty):
@@ -57,8 +52,8 @@ def distribution(logits, sampling, history, step, phase, legacy_off=False):
 def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_scale=1.0,
                     legacy_off=False, cancelled=None, on_token=None, use_cuda_graph=True):
     from .modeling_yue2 import StaticKVCache
-    device = next(model.parameters()).device
-    dtype = next(model.parameters()).dtype
+    device = model.model.embed_tokens.weight.device
+    dtype = model.model.embed_tokens.weight.dtype
     if len(prefix) + sampling.max_tokens > CONTEXT:
         raise ValueError("Prefix + requested generation budget exceeds 24576; no implicit truncation")
     if cfg_scale != 1 and negative is None:
@@ -68,7 +63,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
     if cancelled is not None and cancelled():
         raise InterruptedError("Cancelled before prefill")
     # The two stages deliberately reset their request-local seed, matching the preset.
-    rng_device = device if device.type in {"cpu", "cuda"} else torch.device("cpu")
+    rng_device = device if device.type in {"cpu", "cuda", "xpu"} else torch.device("cpu")
     generator = torch.Generator(device=rng_device).manual_seed(seed)
     config = model.config
 
@@ -83,7 +78,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
 
     graph = None
     positive_cache = negative_cache = None
-    graph_enabled = use_cuda_graph and device.type == "cuda" and not getattr(model, "_yue2_fp8_originals", {})
+    graph_enabled = use_cuda_graph and device.type == "cuda" and torch.version.hip is None and not getattr(model, "_yue2_fp8_originals", {})
     synchronize(device)
     start = time.perf_counter()
     try:
@@ -109,6 +104,8 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
             logits = conditional if cfg_scale == 1.0 else unconditional + cfg_scale * (conditional - unconditional)
             scores = distribution(logits, sampling, history, step, phase, legacy_off)
             if sampling.temperature == 0:
+                if not torch.isfinite(scores.max()).item():
+                    raise FloatingPointError("Greedy decoding requires finite selectable logits")
                 next_id = scores.argmax(-1, keepdim=True)
             else:
                 probabilities = scores.softmax(-1)
@@ -146,7 +143,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
                   "execution": "cuda_graph" if graph is not None else "eager",
                   "attention": graph.attention_backend if graph is not None else "sdpa"}
         if use_cuda_graph and not graph_enabled:
-            timing["graph_fallback_reason"] = "fp8_not_graph_validated" if getattr(model, "_yue2_fp8_originals", {}) else "non_cuda_device"
+            timing["graph_fallback_reason"] = "fp8_not_graph_validated" if getattr(model, "_yue2_fp8_originals", {}) else "rocm_eager" if torch.version.hip else "non_cuda_device"
         return history, timing, not eos
     finally:
         if graph is not None:

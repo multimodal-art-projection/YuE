@@ -117,10 +117,14 @@ def test_quantized_model_requires_explicit_eager_path(model):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA capture requires an actual allocated GPU")
 @pytest.mark.parametrize("prefixes", [[[2, 3, 4]], [[2, 3, 4, 5], [6]]])
-@pytest.mark.parametrize("backend", ["auto", "cudnn"])
+@pytest.mark.parametrize("backend", ["auto", "cudnn", "auto-without-flash"])
 @pytest.mark.parametrize("fused", [False, True])
-def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused):
+def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused, monkeypatch):
     # Head size 8 exercises fused CUDA paths, as does the real head size 128.
+    expected_backend = "flash" if backend == "auto" else "cudnn"
+    if backend == "auto-without-flash":
+        monkeypatch.setattr(torch.backends.cuda, "is_flash_attention_available", lambda: False)
+        backend = "auto"
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(146)
         model = YuE2ForCausalLM(YuE2Config(hidden_size=32, intermediate_size=64, num_hidden_layers=2,
@@ -131,7 +135,7 @@ def test_real_cuda_graph_bfloat16_parity(model, prefixes, backend, fused):
         graph = GraphAR(model, prefixes, 5, attention_backend=backend, fuse_projections=fused)
         torch.testing.assert_close(graph.prefill(), expected, atol=0, rtol=0)
         assert graph.graph is not None
-        assert graph.attention_backend == ("flash" if backend == "auto" else "cudnn")
+        assert graph.attention_backend == expected_backend
         for keys, values in zip(graph.keys, graph.values):
             for branch, prefix in enumerate(prefixes):
                 keys[branch, len(prefix)+1:].fill_(1000)

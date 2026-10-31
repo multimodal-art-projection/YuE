@@ -106,6 +106,8 @@ The staged Python API exposes `plan()` → `generate_semantic()` → `synthesize
 
 **Linux · Python 3.12 · NVIDIA GPU with BF16 support and 24 GB VRAM.** YuE2 produces 48 kHz stereo audio without quantization. Model files download from Hugging Face on first use.
 
+For experimental low-memory, Windows, AMD, Apple Silicon and Intel paths, see [hardware setup and validation scope](docs/hardware.md).
+
 ```bash
 git clone https://github.com/multimodal-art-projection/YuE.git
 cd YuE
@@ -339,33 +341,29 @@ For the original **[MERT](https://arxiv.org/abs/2306.00107)** and **[YuE](https:
 }
 ```
 
+Community-maintained tools and integrations: [awesome-YuE](https://github.com/RevolutionLA/awesome-YuE).
+
 ## Contact
 
 <table>
   <tr>
-    <td align="center" width="50%">
-      <strong><img src="assets/wechat.svg" width="20" height="20" alt="" />&nbsp;WeChat</strong><br>
-      <sub>Chinese-speaking users</sub>
+    <td width="50%" valign="top">
+      <strong>💬 Community</strong><br>
+      <sub><a href="https://discord.gg/ssAyWMnMzu">Join us on Discord ↗</a></sub>
     </td>
-    <td align="center" width="50%">
-      <a href="https://discord.gg/ssAyWMnMzu"><strong><img src="assets/discord.svg" width="20" height="20" alt="" />&nbsp;Join&nbsp;Discord</strong></a><br>
-      <sub>Global users</sub>
+    <td width="50%" valign="top">
+      <strong>✉️ Licensing inquiries</strong><br>
+      <sub><a href="mailto:lauryliuyang@hkgai.org">lauryliuyang@hkgai.org</a></sub>
     </td>
   </tr>
   <tr>
-    <td align="center" colspan="2">
-      <details>
-        <summary><strong>Show WeChat QR code</strong></summary>
-        <br>
-        <a href="assets/wechat-yue2-group.png">
-          <img src="assets/wechat-yue2-group.png" alt="YuE2 WeChat group QR code" width="240" />
-        </a><br>
-        <sub>Click to enlarge<br>Valid until Oct 11, 2026</sub>
-      </details>
+    <td width="50%" valign="top">
+      <strong>🤝 Data partnerships</strong><br>
+      <sub><a href="mailto:gezhang@umich.edu">gezhang@umich.edu</a></sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🎓 Academic collaboration</strong><br>
+      <sub><a href="mailto:ryuanab@connect.ust.hk">ryuanab@connect.ust.hk</a></sub>
     </td>
   </tr>
 </table>
-
-- **Licensing inquiries:** [lauryliuyang@hkgai.org](mailto:lauryliuyang@hkgai.org)
-- **Data partnerships:** [gezhang@umich.edu](mailto:gezhang@umich.edu)
-- **Academic collaboration:** [ryuanab@connect.ust.hk](mailto:ryuanab@connect.ust.hk)

@@ -279,7 +279,7 @@ def generate(args):
 
 def verify(args):
     path = args.directory
-    if (path / 'prepared-manifest.json').is_file():
+    if (path / 'prepared-manifest.json').is_file() and not (path / 'delivery-manifest.json').exists() and not (path / 'native/result.json').exists():
         request = load_prepared(path)
         print(json.dumps({'verified': True, 'kind': 'prepared', 'id': request['id']}))
         return 0
@@ -317,6 +317,8 @@ def share(args):
     """Export only the requested listening assets; keep machine records local."""
     verify(Namespace(directory=args.directory))
     source = args.directory
+    if (source / "listening.mp3").is_file() and "listening.mp3" not in read_json(source / "delivery-manifest.json")["files"]:
+        raise ValueError("listening.mp3 is missing from the delivery manifest")
     request = read_json(source / 'native/request.json')
     summary = read_json(source / 'summary.json')
     public = {key: summary[key] for key in ('status', 'audio_seconds', 'sample_rate',

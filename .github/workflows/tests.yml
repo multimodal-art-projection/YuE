@@ -11,6 +11,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
+      PYTHONDONTWRITEBYTECODE: "1"
       CUDA_VISIBLE_DEVICES: ""
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"

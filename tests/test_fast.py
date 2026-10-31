@@ -6,15 +6,16 @@ from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
-
 import pytest
 import torch
 from safetensors.torch import save_file, load_file
-
 from yue2 import fast
 from yue2 import quantization as quant
 from yue2.protocol import Sampling
 from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM
+from yue2.fast import derive_ar_checkpoint
+from test_model import tiny_config
+from transformers import Qwen3ForCausalLM
 
 
 def make_checkpoint(path):
@@ -181,3 +182,84 @@ def test_fp8_scaled_mm_cuda():
         actual, expected = layer(x), linear(x)
         assert actual.shape == expected.shape and torch.isfinite(actual).all()
         assert (actual.float() - expected.float()).norm() / expected.float().norm() < .15
+
+
+@pytest.mark.parametrize('missing', ['model.safetensors','config.json','all'])
+def test_cached_derivative_cannot_bypass_verification_by_omitting_hashes(tmp_path,missing):
+    torch.set_num_threads(1)
+    source = tmp_path/'source'; YuE2ForCausalLM(tiny_config()).save_pretrained(source)
+    cached = derive_ar_checkpoint(source,tmp_path/'cache')
+    receipt_path = cached/'derivation.json'; receipt = json.loads(receipt_path.read_text())
+    if missing == 'all': receipt['sha256'] = {}
+    else: receipt['sha256'].pop(missing)
+    receipt_path.write_text(json.dumps(receipt))
+    if missing != 'config.json': (cached/'model.safetensors').write_bytes(b'corrupt cache fixture')
+    else: (cached/'config.json').write_text('{}')
+    with pytest.raises(ValueError,match='manifest'): derive_ar_checkpoint(source,tmp_path/'cache')
+
+def test_complete_cache_keeps_exact_ar_tensors_on_reuse(tmp_path):
+    torch.set_num_threads(1); torch.manual_seed(918)
+    original = YuE2ForCausalLM(tiny_config())
+    source = tmp_path/'source'; original.save_pretrained(source)
+    cached = derive_ar_checkpoint(source,tmp_path/'cache')
+    assert derive_ar_checkpoint(source,tmp_path/'cache') == cached
+    actual = load_file(cached/'model.safetensors')
+    assert actual and all(torch.equal(value, original.state_dict()[name]) for name,value in actual.items())
+
+
+@pytest.mark.parametrize('tied', [True, False])
+@torch.inference_mode()
+def test_native_tied_checkpoint_saves_reloads_and_derives_equivalent_ar(tmp_path, tied):
+    torch.set_num_threads(1)
+    torch.manual_seed(94)
+    config = tiny_config()
+    config.tie_word_embeddings = tied
+    model = YuE2ForCausalLM(config).eval()
+    assert (model.lm_head.weight.data_ptr() == model.model.embed_tokens.weight.data_ptr()) == tied
+    source = tmp_path / 'source'
+    model.save_pretrained(source)
+    native = YuE2ForCausalLM.from_pretrained(source, local_files_only=True).eval()
+    ids = torch.tensor([[3,5,8,7]])
+    expected = model(ids, use_cache=False).logits
+    torch.testing.assert_close(native(ids, use_cache=False).logits, expected, atol=0, rtol=0)
+    derived = derive_ar_checkpoint(source, tmp_path / 'cache')
+    tensors = load_file(derived / 'model.safetensors')
+    assert torch.equal(tensors['lm_head.weight'], model.lm_head.weight)
+    assert torch.equal(tensors['model.embed_tokens.weight'], model.model.embed_tokens.weight)
+    ar = Qwen3ForCausalLM.from_pretrained(derived, local_files_only=True).eval()
+    torch.testing.assert_close(ar(ids, use_cache=False).logits, expected, atol=2e-6, rtol=2e-5)
+    assert derive_ar_checkpoint(source, tmp_path / 'cache') == derived
+
+
+@pytest.mark.parametrize('exit_after_result', [True,False])
+def test_worker_drains_short_pipe_reads_before_treating_child_exit_as_failure(monkeypatch, exit_after_result):
+    popen = subprocess.Popen
+    processes = []
+    code = """
+import json, sys
+json.loads(sys.stdin.readline())
+for line in sys.stdin:
+    json.loads(line)
+    print('YUE2_FAST\t' + json.dumps({'event':'result','ids':list(range(1000)),
+                                     'timing':{'fixture':True},'truncated':False}),flush=True)
+    if sys.argv[1] == 'exit': break
+"""
+    def launch(command, **kwargs):
+        process = popen([sys.executable,'-c',code,'exit' if exit_after_result else 'persist'],**kwargs)
+        processes.append(process)
+        return process
+    monkeypatch.setattr(fast.subprocess,'Popen',launch)
+    native_read = os.read
+    def short_read(fd,size):
+        if not processes or fd != processes[0].stdout.fileno(): return native_read(fd,size)
+        value = native_read(fd,min(size,100))
+        if exit_after_result: processes[0].wait(timeout=5)
+        return value
+    monkeypatch.setattr(fast.os,'read',short_read)
+    pipe = SimpleNamespace(model_dir=Path('.'),device='cpu',memory_budget_gib=24)
+    worker = fast._Worker(pipe)
+    try:
+        actual = worker.request({'phase':'abc'})
+        assert actual == (list(range(1000)),{'fixture':True},False)
+    finally: worker.close()
+    assert processes[0].poll() is not None

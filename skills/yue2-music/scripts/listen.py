@@ -53,16 +53,19 @@ def text(value):
     return html.escape(value if isinstance(value, str) else json_text(value), quote=True)
 
 
-def json_object(path):
+def json_object(path, *, with_bytes=False):
     if path.stat().st_size > 8 * 1024 * 1024:
         raise ValueError("metadata exceeds 8 MiB")
-    value = json.loads(path.read_text(encoding="utf-8"),
+    raw = path.read_bytes()
+    if len(raw) > 8 * 1024 * 1024:
+        raise ValueError("metadata exceeds 8 MiB")
+    value = json.loads(raw.decode("utf-8"),
                        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("non-finite JSON value")))
     if not isinstance(value, dict):
         raise ValueError("expected a JSON object")
     if has_credentials(value):
         raise ValueError("credential-like content; file withheld")
-    return value
+    return (value, raw) if with_bytes else value
 
 
 def add_issue(case, message):
@@ -70,18 +73,18 @@ def add_issue(case, message):
 
 
 def metadata(source, case):
-    objects = {}
+    objects, snapshots = {}, {}
     for name in METADATA:
         path = source / name
         if not path.is_file():
             continue
         try:
-            objects[name] = json_object(path)
+            objects[name], snapshots[name] = json_object(path, with_bytes=True)
         except (OSError, UnicodeError, ValueError, RecursionError) as exc:
             # Exception details from a JSON parser can contain input fragments.
             reason = "credential-like content; file withheld" if "credential-like" in str(exc) else "unreadable or invalid JSON; file withheld"
             add_issue(case, f"{name}: {reason}")
-    return objects
+    return objects, snapshots
 
 
 def copy_case(source, destination, number):
@@ -92,7 +95,7 @@ def copy_case(source, destination, number):
     case_dir.mkdir()
     if not source.is_dir():
         add_issue(case, "Input directory is missing or is not a directory")
-    objects = metadata(source, case) if source.is_dir() else {}
+    objects, snapshots = metadata(source, case) if source.is_dir() else ({}, {})
     request = objects.get("request.json", objects.get("input.json", {}))
     config = objects.get("config.json", {})
     result = objects.get("result.json", {})
@@ -135,7 +138,10 @@ def copy_case(source, destination, number):
         path = source / name
         copied = case_dir / name
         try:
-            shutil.copyfile(path, copied)
+            if name in snapshots:
+                copied.write_bytes(snapshots[name])
+            else:
+                shutil.copyfile(path, copied)
             observed = digest(copied)
             case["files"][name] = observed
             wanted = artifacts.get(name)
