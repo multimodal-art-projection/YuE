@@ -267,6 +267,152 @@ def compare(before: Score, after: Score, names=VOICES, allow_tempo_change=False)
             "scope": "exact symbolic melody and meter; no claim about generated audio or unchanged harmony"}
 
 
+SECTION_TAG = re.compile(r"^\[([^\]\n]+)\]\s*$")
+SECTION_COMMENT = re.compile(r"^%\s+(.+?)\s*$")
+# Lyric scansion for words the vowel-group rule undercounts (y between vowels).
+LYRIC_SYLLABLES = {"every": 2, "ever": 2, "beyond": 2}
+
+
+def normalize_section(name: str) -> str:
+    return re.sub(r"\s+", " ", name.strip().lower().replace("_", " "))
+
+
+def latin_syllables(word: str) -> int:
+    clean = re.sub(r"[^A-Za-z]", "", word).lower()
+    if not clean:
+        return 0
+    if clean in LYRIC_SYLLABLES:
+        return LYRIC_SYLLABLES[clean]
+    count = len(re.findall(r"[aeiouy]+", clean))
+    if clean.endswith("e") and not clean.endswith(("le", "ye")) and count > 1:
+        count -= 1
+    return max(1, count)
+
+
+def estimate_syllables(line: str) -> int:
+    ideographs = len(re.findall(r"[\u4e00-\u9fff]", line))
+    return ideographs + sum(latin_syllables(word) for word in re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", line))
+
+
+def lyric_sections(text: str) -> list[dict]:
+    sections = []
+    current = None
+    for line in text.splitlines():
+        tag = SECTION_TAG.fullmatch(line.strip())
+        if tag:
+            if current is not None:
+                sections.append(current)
+            current = {"name": normalize_section(tag.group(1)), "label": tag.group(1).strip(), "lines": []}
+            continue
+        if not line.strip():
+            continue
+        if current is None:
+            current = {"name": "", "label": "", "lines": []}
+        current["lines"].append(line)
+    if current is not None:
+        sections.append(current)
+    return sections
+
+
+def expand_measures(line: str) -> list[str]:
+    fail(not line.endswith("|"), "music line must end with a plain barline")
+    bars = []
+    for bar in line[:-1].split("|"):
+        bar = bar.strip()
+        fail(not bar, "empty measure or unsupported double/repeat barline")
+        rest = re.fullmatch(r"Z([2-4])?", bar)
+        if rest:
+            bars.extend(["Z"] * int(rest.group(1) or "1"))
+        else:
+            bars.append(bar)
+    return bars
+
+
+def score_sections(text: str) -> list[dict]:
+    score = parse(text)
+    vocal = score.voices["Vocal"]
+    sections = []
+    current = None
+    bar_index = 0
+
+    def flush():
+        nonlocal current
+        if current is not None:
+            sections.append(current)
+            current = None
+
+    def begin(name, label, comment_line):
+        nonlocal current
+        flush()
+        current = {"name": name, "label": label, "comment_line": comment_line,
+                   "measures": 0, "vocal_onsets": 0, "onsets_per_bar": []}
+
+    def add_vocal_line(line):
+        nonlocal current, bar_index
+        if current is None:
+            begin("", "", None)
+        for _ in expand_measures(line):
+            start, length, _meter = vocal.bars[bar_index]
+            onsets = sum(1 for onset, _pitch, _dur in vocal.notes if start <= onset < start + length)
+            current["measures"] += 1
+            current["vocal_onsets"] += onsets
+            current["onsets_per_bar"].append(onsets)
+            bar_index += 1
+
+    for index, line in enumerate(text.splitlines()):
+        comment = SECTION_COMMENT.fullmatch(line)
+        if comment:
+            begin(normalize_section(comment.group(1)), comment.group(1).strip(), index)
+            continue
+        if index in score.music_lines and score.music_lines[index] == "Vocal":
+            add_vocal_line(line)
+    flush()
+    fail(bar_index != len(vocal.bars), "Section walk lost vocal measures")
+    return sections
+
+
+def align_lyrics(lyrics: str, abc: str, *, require_line_per_bar=False,
+                 require_onset_syllables=False) -> dict:
+    lyric = lyric_sections(lyrics)
+    scored = score_sections(abc)
+    differences = []
+    if len(lyric) != len(scored):
+        differences.append(f"section count differs: lyrics {len(lyric)} vs score {len(scored)}")
+    pairs = []
+    for index, (left, right) in enumerate(zip(lyric, scored), 1):
+        syllables = [estimate_syllables(line) for line in left["lines"]]
+        pair = {"index": index, "lyric_name": left["name"], "score_name": right["name"],
+                "lyric_label": left["label"], "score_label": right["label"],
+                "lyric_lines": len(left["lines"]), "score_measures": right["measures"],
+                "estimated_syllables": syllables, "vocal_onsets": right["vocal_onsets"],
+                "onsets_per_bar": right["onsets_per_bar"], "name_match": left["name"] == right["name"]}
+        if left["name"] != right["name"]:
+            differences.append(f"section {index}: lyric {left['name']!r} vs score {right['name']!r}")
+        if require_line_per_bar and len(left["lines"]) != right["measures"]:
+            differences.append(
+                f"section {index}: {len(left['lines'])} lyric lines vs {right['measures']} measures")
+        if require_onset_syllables:
+            if len(syllables) != len(right["onsets_per_bar"]):
+                differences.append(
+                    f"section {index}: {len(syllables)} lyric lines vs {len(right['onsets_per_bar'])} bars")
+            else:
+                for line_no, (count, onsets) in enumerate(zip(syllables, right["onsets_per_bar"]), 1):
+                    if count != onsets:
+                        differences.append(
+                            f"section {index}, line {line_no}: {count} syllables vs {onsets} vocal onsets")
+        pairs.append(pair)
+    return {
+        "match": not differences,
+        "scope": "section labels and optional line/bar or syllable/onset counts; not audio verification",
+        "require_line_per_bar": require_line_per_bar,
+        "require_onset_syllables": require_onset_syllables,
+        "lyric_sections": lyric,
+        "score_sections": scored,
+        "pairs": pairs,
+        "differences": differences,
+    }
+
+
 def strip_chords(text: str, keep_voice="both") -> str:
     source = parse(text)
     lines = text.splitlines(keepends=True)
@@ -306,10 +452,36 @@ def main() -> int:
     diff.add_argument("--voices", choices=("both", *VOICES), default="both")
     diff.add_argument("--allow-tempo-change", action="store_true")
     diff.add_argument("--output", type=Path)
+    align = commands.add_parser("align-lyrics",
+                                help="compare lyric [Section] tags with % section comments")
+    align.add_argument("--lyrics", type=Path)
+    align.add_argument("--request", type=Path, help="JSON request object; uses the lyrics field")
+    align.add_argument("--score", type=Path, required=True)
+    align.add_argument("--output", type=Path)
+    align.add_argument("--require-line-per-bar", action="store_true",
+                       help="each lyric section must have one line per vocal measure")
+    align.add_argument("--require-onset-syllables", action="store_true",
+                       help="each lyric line's estimated syllables must equal that bar's vocal onsets")
     args = cli.parse_args()
     try:
         if args.command == "inspect":
             data = report(parse(args.score.read_bytes().decode("utf-8")))
+        elif args.command == "align-lyrics":
+            fail((args.lyrics is None) == (args.request is None),
+                 "Provide exactly one of --lyrics or --request")
+            if args.request:
+                try:
+                    payload = json.loads(args.request.read_text(encoding="utf-8"))
+                except json.JSONDecodeError as exc:
+                    raise AbcError(f"Request JSON is invalid: {exc.msg}") from exc
+                fail(not isinstance(payload, dict) or not isinstance(payload.get("lyrics"), str),
+                     "Request JSON must include a lyrics string")
+                lyrics = payload["lyrics"]
+            else:
+                lyrics = args.lyrics.read_text(encoding="utf-8")
+            data = align_lyrics(lyrics, args.score.read_bytes().decode("utf-8"),
+                                require_line_per_bar=args.require_line_per_bar,
+                                require_onset_syllables=args.require_onset_syllables)
         elif args.command == "strip-chords":
             fail(args.source.resolve() == args.output.resolve(), "Write a new file; do not overwrite the source")
             output = strip_chords(args.source.read_bytes().decode("utf-8"), args.keep_voice)

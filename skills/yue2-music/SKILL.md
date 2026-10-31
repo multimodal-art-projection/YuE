@@ -132,6 +132,8 @@ Read [editing-workflows.md](references/editing-workflows.md) and
    ```bash
    python scripts/abc_tools.py inspect edits/jazz.abc
    python scripts/abc_tools.py compare outputs/plan/score.abc edits/jazz.abc --voices Vocal
+   python scripts/abc_tools.py align-lyrics --request edits/jazz.json --score edits/jazz.abc \
+     --require-line-per-bar
    python scripts/run_yue2.py generate --request edits/jazz.json --cot full \
      --abc-file edits/jazz.abc --output outputs/jazz
    ```
