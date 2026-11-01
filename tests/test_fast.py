@@ -139,17 +139,57 @@ def test_fp8_cpu_rejected():
 _v2_sampler_available = fast._v2_sampler_available
 
 
-def test_stage_vocabulary_restriction_kept_on_v1_sampler():
-    from types import SimpleNamespace
-    sampling = SimpleNamespace(repetition_penalty=1.2, penalty_window=40)
-    # V1: allowed_token_ids carries the stage range; no phase hint is sent.
-    assert fast._allowed_token_ids("abc", v2=False) == list(range(fast.EOD)) + [fast.ABC_END]
-    assert fast._allowed_token_ids("semantic", v2=False) == (
-        list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE)) + [fast.MUSIC_END])
-    assert fast.PHASE not in fast._sampling_extra_args(sampling, "abc", v2=False)
-    # V2: the phase mask in the logits processor restricts instead.
-    assert fast._allowed_token_ids("abc", v2=True) is None
-    assert fast._sampling_extra_args(sampling, "semantic", v2=True)[fast.PHASE] == "semantic"
+@pytest.mark.parametrize("v2", [False, True])
+@pytest.mark.parametrize("phase", ["abc", "semantic"])
+def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, v2, phase):
+    import asyncio
+    import io
+
+    make_checkpoint(tmp_path / "model")
+    captured, emitted, stopped = [], [], []
+
+    class Engine:
+        @staticmethod
+        def from_engine_args(args):
+            return Engine()
+
+        async def generate(self, prompt, params, request_id):
+            captured.append(params)
+            yield SimpleNamespace(outputs=[SimpleNamespace(
+                token_ids=[params.stop_token_ids[0]], stop_reason=None)])
+
+        def shutdown(self):
+            stopped.append(True)
+
+    def sampling_params(allowed_token_ids=None, **kwargs):
+        return SimpleNamespace(allowed_token_ids=allowed_token_ids, **kwargs)
+
+    monkeypatch.setitem(sys.modules, "vllm", SimpleNamespace(
+        __version__="0.19.0", SamplingParams=sampling_params))
+    monkeypatch.setitem(sys.modules, "vllm.engine.arg_utils", SimpleNamespace(AsyncEngineArgs=SimpleNamespace))
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine.async_llm", SimpleNamespace(AsyncLLM=Engine))
+    monkeypatch.setenv("YUE2_VLLM_VERSION", "0.19.0")
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda index: SimpleNamespace(total_memory=24 * 2**30))
+    monkeypatch.setattr(fast, "derive_ar_checkpoint", lambda path: tmp_path / "model")
+    monkeypatch.setattr(fast, "_v2_sampler_available", lambda: v2)
+    monkeypatch.setattr(fast, "_emit", emitted.append)
+    setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
+    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": phase, "stream_tokens": True}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
+    asyncio.run(fast._worker_main())
+
+    params, = captured
+    if v2:
+        assert params.allowed_token_ids is None
+        assert params.extra_args[fast.PHASE] == phase
+    else:
+        allowed = (list(range(fast.EOD)) + [fast.ABC_END] if phase == "abc" else
+                   list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE)) + [fast.MUSIC_END])
+        assert params.allowed_token_ids == allowed
+        assert fast.PHASE not in params.extra_args
+    assert [event["event"] for event in emitted] == ["token", "result"]
+    assert emitted[-1]["ids"] == [] and not emitted[-1]["truncated"]
+    assert stopped == [True]
 
 
 @pytest.mark.skipif(importlib.util.find_spec('vllm') is None or _v2_sampler_available(),

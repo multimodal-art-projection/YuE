@@ -470,40 +470,6 @@ async def _worker_main():
     v2 = _v2_sampler_available()
     load_seconds = time.perf_counter() - load_start
 
-    async def handle(request):
-        sampling = Sampling(**request["sampling"])
-        abc = request["phase"] == "abc"
-        end = ABC_END if abc else MUSIC_END
-        params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
-                   top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
-                   max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
-                   allowed_token_ids=_allowed_token_ids(request["phase"], v2), detokenize=False,
-                   extra_args=_sampling_extra_args(sampling, request["phase"], v2))
-        start, first, output, sent = time.perf_counter(), None, None, 0
-        rid = request["id"]
-        async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, rid):
-            output = result.outputs[0]
-            if output.token_ids and first is None:
-                first = time.perf_counter() - start
-            if request["stream_tokens"]:
-                for token in output.token_ids[sent:]:
-                    _emit({"id": rid, "event": "token", "token": int(token)})
-                sent = len(output.token_ids)
-        if output is None:
-            raise RuntimeError("vLLM returned no output")
-        ids = list(output.token_ids)
-        ended = bool(ids and ids[-1] == end) or output.stop_reason == end
-        if ids and ids[-1] == end:
-            ids.pop()
-        elapsed = time.perf_counter() - start
-        count = len(ids) + int(ended)
-        _emit({"id": rid, "event": "result", "ids": ids, "truncated": not ended,
-               "timing": {"seconds": elapsed, "ttft_seconds": first,
-                   "output_tokens": count, "content_tokens": len(ids), "output_tps": count / elapsed,
-                   "prefix_tokens": len(request["prefix"]), "cfg_branches": 1,
-                   "backend_actual": "vllm", "backend_requested": "vllm",
-                   "engine_load_seconds": load_seconds, "kv_cache_memory_bytes": kv_bytes,
-                   "ar_derivation_identity": derived.name, "max_num_seqs": max_seqs}})
     try:
         while line := await asyncio.to_thread(sys.stdin.readline):
             request = json.loads(line)
@@ -513,9 +479,8 @@ async def _worker_main():
             params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
                        top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
                        max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
-                       detokenize=False,
-                       extra_args={PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window,
-                                   PHASE: request["phase"]})
+                       allowed_token_ids=_allowed_token_ids(request["phase"], v2), detokenize=False,
+                       extra_args=_sampling_extra_args(sampling, request["phase"], v2))
             start, first, output, sent = time.perf_counter(), None, None, 0
             async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, str(uuid.uuid4())):
                 output = result.outputs[0]
