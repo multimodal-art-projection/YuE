@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import numpy as np
 from pathlib import Path
 import subprocess
 import sys
@@ -68,13 +69,15 @@ def test_missing_ar_tensor_fails(tmp_path):
 
 def test_full_context_kv_budget():
     config = YuE2Config().to_dict()
-    assert fast.kv_cache_bytes(config) == int(2.625 * 2**30)
-    assert fast.kv_cache_bytes(config, max_sequences=2) == int(5.25 * 2**30)
+    # 24576 context plus the 256-token headroom the vLLM admission check
+    # needs, rounded to 16-token blocks.
+    assert fast.kv_cache_bytes(config) == 24832 * 28 * 2 * 8 * 128 * 2
+    assert fast.kv_cache_bytes(config, max_sequences=2) == 2 * 24832 * 28 * 2 * 8 * 128 * 2
 
 
 @pytest.mark.parametrize("cfg,legacy,reason", [(1.01, True, "paired_cfg_uses_torch"),
                                                (1., True, "historical_off_sampling_uses_torch"),
-                                               (1., False, "vllm_requires_cuda")])
+                                               (1., False, "vllm_requires_cuda_or_xpu")])
 def test_cfg_and_device_fallback_preserve_protocol(monkeypatch, cfg, legacy, reason):
     from yue2 import sampling
     calls, model = [], object()
@@ -101,8 +104,9 @@ import sys,json
 json.loads(sys.stdin.readline())
 for line in sys.stdin:
     q=json.loads(line)
-    lines=['YUE2_FAST\\t'+json.dumps({'event':'token','token':i}) for i in range(100)]
-    lines.append('YUE2_FAST\\t'+json.dumps({'event':'result','ids':[12], 'timing':{},'truncated':False}))
+    i=q['id']
+    lines=['YUE2_FAST\\t'+json.dumps({'id':i,'event':'token','token':n}) for n in range(100)]
+    lines.append('YUE2_FAST\\t'+json.dumps({'id':i,'event':'result','ids':[12], 'timing':{},'truncated':False}))
     sys.stdout.write('\\n'.join(lines)+'\\n'); sys.stdout.flush()
 """
     monkeypatch.setattr(fast.subprocess, "Popen", lambda command, **kwargs: original_popen([sys.executable, '-c', worker_code], **kwargs))
@@ -133,9 +137,76 @@ def test_fp8_cpu_rejected():
         quant.prepare_fp8_ar(torch.nn.Linear(32, 32), "cpu")
 
 
-@pytest.mark.skipif(importlib.util.find_spec('vllm') is None, reason='Optional vLLM package is not installed')
+_v2_sampler_available = fast._v2_sampler_available
+
+
+@pytest.mark.parametrize("v2", [False, True])
+@pytest.mark.parametrize("phase", ["abc", "semantic"])
+def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, v2, phase):
+    import asyncio
+    import io
+
+    make_checkpoint(tmp_path / "model")
+    captured, emitted, registered, stopped = [], [], [], []
+
+    class Engine:
+        @staticmethod
+        def from_engine_args(args):
+            registered.append(args.logits_processors)
+            return Engine()
+
+        async def generate(self, prompt, params, request_id):
+            captured.append(params)
+            yield SimpleNamespace(outputs=[SimpleNamespace(
+                token_ids=[params.stop_token_ids[0]], stop_reason=None)])
+
+        def shutdown(self):
+            stopped.append(True)
+
+    def sampling_params(allowed_token_ids=None, **kwargs):
+        return SimpleNamespace(allowed_token_ids=allowed_token_ids, **kwargs)
+
+    class Args(SimpleNamespace):
+        @staticmethod
+        def create_engine_config():
+            # predates the runner property: module presence decides
+            return SimpleNamespace()
+
+    monkeypatch.setitem(sys.modules, "vllm", SimpleNamespace(
+        __version__="0.19.0", SamplingParams=sampling_params))
+    monkeypatch.setitem(sys.modules, "vllm.engine.arg_utils", SimpleNamespace(AsyncEngineArgs=Args))
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine.async_llm", SimpleNamespace(AsyncLLM=Engine))
+    monkeypatch.setenv("YUE2_VLLM_VERSION", "0.19.0")
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda index: SimpleNamespace(total_memory=24 * 2**30))
+    monkeypatch.setattr(fast, "derive_ar_checkpoint", lambda path: tmp_path / "model")
+    monkeypatch.setattr(fast, "_v2_sampler_available", lambda: v2)
+    monkeypatch.setattr(fast, "_emit", emitted.append)
+    setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
+    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": phase, "stream_tokens": True, "id": "test-req"}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
+    asyncio.run(fast._worker_main())
+
+    params, = captured
+    assert registered == [["yue2.fast:WindowedPenaltyV2" if v2 else "yue2.fast:WindowedPenaltyV1"]]
+    if v2:
+        assert params.allowed_token_ids is None
+        assert params.extra_args[fast.PHASE] == phase
+    else:
+        allowed = (list(range(fast.EOD)) + [fast.ABC_END] if phase == "abc" else
+                   list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE)) + [fast.MUSIC_END])
+        assert params.allowed_token_ids == allowed
+        assert fast.PHASE not in params.extra_args
+    results = [e for e in emitted if e.get("event") == "result"]
+    assert len(results) == 1
+    assert results[0]["ids"] == [] and not results[0]["truncated"]
+    assert results[0]["id"] == "test-req"
+    assert stopped == [True]
+
+
+@pytest.mark.skipif(importlib.util.find_spec('vllm') is None or _v2_sampler_available(),
+                    reason='Optional vLLM package or its model-runner V1 sampler is not installed')
 def test_window_processor_counting_and_request_moves():
-    cls = fast.WindowedPenalty
+    cls = fast.WindowedPenaltyV1
     processor = cls(SimpleNamespace(scheduler_config=SimpleNamespace(max_num_seqs=2)), 'cpu', False)
     a, b = [2, 2, 3], [1]
     added = [(0, SimpleNamespace(extra_args={fast.PENALTY: 2., fast.WINDOW: 3}), [], a),
@@ -148,6 +219,37 @@ def test_window_processor_counting_and_request_moves():
     torch.testing.assert_close(processor.apply(logits.clone()), actual.flip(0))
     processor.update_state(SimpleNamespace(removed=[0], added=[], moved=[(1, 0, SimpleNamespace(name='UNIDIRECTIONAL'))]))
     torch.testing.assert_close(processor.apply(logits[:1].clone()), actual[:1])
+
+
+@pytest.mark.skipif(not _v2_sampler_available(), reason='vLLM model-runner V2 sampler is not installed')
+def test_window_processor_v2_reads_committed_tokens():
+    cls = fast.WindowedPenaltyV2
+    vocab = fast.CODEC_OFFSET + fast.CODEC_SIZE
+    req_states = SimpleNamespace(
+        device=torch.device("cpu"), max_num_reqs=2, vocab_size=vocab,
+        all_token_ids=SimpleNamespace(gpu=torch.tensor([[2, 2, 3], [1, 0, 0]])),
+        prompt_len=SimpleNamespace(cpu=torch.tensor([0, 0])),
+        prefill_len=SimpleNamespace(cpu=torch.tensor([0, 0])),
+        total_len=SimpleNamespace(gpu=torch.tensor([3, 1])))
+    processor = cls(SimpleNamespace(), req_states)
+    with pytest.raises(ValueError):
+        cls.validate_params(SimpleNamespace(extra_args={fast.PENALTY: 0.}))
+    assert processor.add_request(0, SimpleNamespace(extra_args={fast.PENALTY: 2., fast.WINDOW: 3}))
+    assert processor.add_request(1, SimpleNamespace(extra_args={fast.PENALTY: 3., fast.WINDOW: 2}))
+    logits = torch.tensor([[0., 9., 12., -2.], [0., 9., 12., -2.]])
+    ctx = SimpleNamespace(idx_mapping_np=np.array([0, 1]))
+    actual = processor.apply(logits.clone(), ctx)
+    torch.testing.assert_close(actual, torch.tensor([[0., 9., 3., -4.], [0., 3., 12., -2.]]))
+    # A recycled slot is fully reinitialized by its next occupant: a neutral
+    # penalty disables the adjustment for that row from then on.
+    assert not processor.add_request(1, SimpleNamespace(extra_args={fast.PENALTY: 1.}))
+    torch.testing.assert_close(processor.apply(logits.clone(), ctx)[1], logits[1])
+    # The yue2_phase mask keeps only each stage's range plus its end token.
+    assert processor.add_request(0, SimpleNamespace(extra_args={fast.PENALTY: 1., fast.PHASE: "abc"}))
+    row = torch.zeros(1, vocab)
+    out = processor.apply(row.clone(), SimpleNamespace(idx_mapping_np=np.array([0])))[0]
+    assert out[fast.EOD - 1] == 0 and out[fast.ABC_END] == 0
+    assert torch.isinf(out[fast.EOD:fast.ABC_END]).all() and torch.isinf(out[fast.ABC_END + 1:]).all()
 
 
 def test_fp8_ar_selection_idempotence_and_exact_restore(monkeypatch):
@@ -239,8 +341,8 @@ def test_worker_drains_short_pipe_reads_before_treating_child_exit_as_failure(mo
 import json, sys
 json.loads(sys.stdin.readline())
 for line in sys.stdin:
-    json.loads(line)
-    print('YUE2_FAST\t' + json.dumps({'event':'result','ids':list(range(1000)),
+    request = json.loads(line)
+    print('YUE2_FAST\t' + json.dumps({'id':request['id'],'event':'result','ids':list(range(1000)),
                                      'timing':{'fixture':True},'truncated':False}),flush=True)
     if sys.argv[1] == 'exit': break
 """
@@ -263,3 +365,275 @@ for line in sys.stdin:
         assert actual == (list(range(1000)),{'fixture':True},False)
     finally: worker.close()
     assert processes[0].poll() is not None
+
+
+def test_sampler_selection_follows_engine_runner_not_module(monkeypatch, tmp_path):
+    """VLLM_USE_V2_MODEL_RUNNER=0 builds V1 engines even where the V2
+    processor module exists; the config handed to the processor is
+    authoritative, and an absent module stays V1 regardless of config."""
+    from types import SimpleNamespace
+    from yue2 import fast
+
+    # forced V1 with module present -> V1
+    assert fast._v2_runner_for(SimpleNamespace(use_v2_model_runner=False), True) is False
+    # forced/selected V2 with module present -> V2
+    assert fast._v2_runner_for(SimpleNamespace(use_v2_model_runner=True), True) is True
+    # config predates the runner property -> module presence decides
+    assert fast._v2_runner_for(SimpleNamespace(), True) is True
+    assert fast._v2_runner_for(SimpleNamespace(), False) is False
+    # a V2 selection cannot conjure the sampler where its module is absent
+    assert fast._v2_runner_for(SimpleNamespace(use_v2_model_runner=True), False) is False
+
+
+@pytest.mark.parametrize("selected,module_available", [
+    (None, False),   # stock 0.19: no V2 module, V1 engine
+    (None, True),    # 0.32 default: V2 runner, module present
+    (False, True),   # forced V1 runner with the V2 module installed
+])
+def test_registered_penalty_class_matches_loader_interface(monkeypatch, selected, module_available):
+    """vLLM's loaders reject a registered processor that does not inherit the
+    selected sampler's interface: the stock V1 (0.19) and model-runner V2
+    (0.32) loaders both issubclass-check the class named by the FQCN. The
+    runner selection and the registered class must agree on the interface."""
+    pytest.importorskip('triton')
+    import sys
+    from types import SimpleNamespace
+    from yue2 import fast
+
+    monkeypatch.setitem(sys.modules, "vllm.v1.sample.logits_processor",
+                        SimpleNamespace(LogitsProcessor=type("V1Interface", (), {})))
+    if module_available:
+        monkeypatch.setitem(sys.modules, "vllm.v1.worker.gpu.sample.logits_processor",
+                            SimpleNamespace(LogitsProcessor=type("V2Interface", (), {})))
+    config = SimpleNamespace() if selected is None else SimpleNamespace(use_v2_model_runner=selected)
+    v2 = fast._v2_runner_for(config, module_available)
+    name = "WindowedPenaltyV2" if v2 else "WindowedPenaltyV1"
+    vars(fast).pop(name, None)
+    try:
+        cls = getattr(fast, name)
+        module = sys.modules["vllm.v1.worker.gpu.sample.logits_processor" if v2
+                             else "vllm.v1.sample.logits_processor"]
+        assert issubclass(cls, module.LogitsProcessor)  # the loader contract
+    finally:
+        vars(fast).pop(name, None)
+
+
+def test_worker_params_follow_forced_v1_runner(monkeypatch, tmp_path):
+    """Through the real _worker_main: engine config reporting a V1 runner must
+    restore allowed_token_ids and register the V1 processor class even with
+    the V2 module importable."""
+    import asyncio
+    import io
+    import sys
+    from types import SimpleNamespace
+    from yue2 import fast
+
+    make_checkpoint(tmp_path / "model")
+    captured, emitted, registered = [], [], []
+
+    class Engine:
+        @staticmethod
+        def from_engine_args(args):
+            registered.append(args.logits_processors)
+            return Engine()
+
+        async def generate(self, prompt, params, request_id):
+            captured.append(params)
+            yield SimpleNamespace(outputs=[SimpleNamespace(
+                token_ids=[params.stop_token_ids[0]], stop_reason=None)])
+
+        def shutdown(self):
+            pass
+
+    def sampling_params(allowed_token_ids=None, **kwargs):
+        return SimpleNamespace(allowed_token_ids=allowed_token_ids, **kwargs)
+
+    class Args(SimpleNamespace):
+        @staticmethod
+        def create_engine_config():
+            return SimpleNamespace(use_v2_model_runner=False)
+
+    monkeypatch.setitem(sys.modules, "vllm", SimpleNamespace(
+        __version__="0.32.0", SamplingParams=sampling_params))
+    monkeypatch.setitem(sys.modules, "vllm.engine.arg_utils", SimpleNamespace(AsyncEngineArgs=Args))
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine.async_llm", SimpleNamespace(AsyncLLM=Engine))
+    monkeypatch.setenv("YUE2_VLLM_VERSION", "0.32.0")
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda index: SimpleNamespace(total_memory=24 * 2**30))
+    monkeypatch.setattr(fast, "derive_ar_checkpoint", lambda path: tmp_path / "model")
+    monkeypatch.setattr(fast, "_v2_sampler_available", lambda: True)  # V2 module importable
+    monkeypatch.setattr(fast, "_emit", emitted.append)
+
+    setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
+    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": "semantic", "stream_tokens": False,
+               "id": "forced-v1"}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
+    asyncio.run(fast._worker_main())
+
+    params, = captured
+    assert registered == [["yue2.fast:WindowedPenaltyV1"]]
+    assert fast.PHASE not in params.extra_args
+    assert params.allowed_token_ids == (list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE))
+                                        + [fast.MUSIC_END])
+
+
+def test_failed_request_emits_one_error_and_sibling_completes(monkeypatch):
+    """A request whose engine call raises must produce exactly one
+    request-ID error event; an in-flight sibling still delivers its result."""
+    import asyncio
+    from yue2 import fast
+
+    emitted = []
+    monkeypatch.setattr(fast, "_emit", lambda value: emitted.append(value))
+
+    async def handle(request):
+        if request["id"] == "boom":
+            raise RuntimeError("engine raised mid-generation")
+        for token in (11, 12):
+            fast._emit({"id": request["id"], "event": "token", "token": token})
+        fast._emit({"id": request["id"], "event": "result", "ids": [11, 12],
+                    "timing": {"fixture": True}, "truncated": False})
+
+    async def main():
+        await asyncio.gather(fast._serve_request(handle, {"id": "boom"}),
+                             fast._serve_request(handle, {"id": "okay"}))
+
+    asyncio.run(main())
+
+    errors = [e for e in emitted if e.get("event") == "error"]
+    results = [e for e in emitted if e.get("event") == "result"]
+    assert len(errors) == 1, emitted
+    assert errors[0]["id"] == "boom"
+    assert "engine raised mid-generation" in errors[0]["error"]
+    assert len(results) == 1 and results[0]["id"] == "okay"
+    tokens = [e for e in emitted if e.get("event") == "token"]
+    assert [t["id"] for t in tokens] == ["okay", "okay"]
+
+
+WORKER_MAIN_FIXTURE = r"""
+import asyncio, json, os, sys
+from pathlib import Path
+from types import SimpleNamespace
+import torch
+from yue2 import fast
+
+class Engine:
+    @staticmethod
+    def from_engine_args(args):
+        return Engine()
+
+    async def generate(self, prompt, params, request_id):
+        if prompt["prompt_token_ids"][:1] == [0]:
+            # one real token, then a mid-generation engine failure
+            yield SimpleNamespace(outputs=[SimpleNamespace(token_ids=[7], stop_reason=None)])
+            raise RuntimeError("engine raised mid-generation")
+        yield SimpleNamespace(outputs=[SimpleNamespace(token_ids=[11, 12], stop_reason=None)])
+        yield SimpleNamespace(outputs=[SimpleNamespace(
+            token_ids=[11, 12, fast.MUSIC_END], stop_reason=None)])
+
+    def shutdown(self):
+        pass
+
+class Args(SimpleNamespace):
+    @staticmethod
+    def create_engine_config():
+        return SimpleNamespace()  # predates the runner property
+
+sys.modules["vllm"] = SimpleNamespace(__version__="0.19.0",
+    SamplingParams=lambda **kwargs: SimpleNamespace(**kwargs))
+sys.modules["vllm.engine.arg_utils"] = SimpleNamespace(AsyncEngineArgs=Args)
+sys.modules["vllm.v1.engine.async_llm"] = SimpleNamespace(AsyncLLM=Engine)
+fast.derive_ar_checkpoint = lambda path: Path(os.environ["YUE2_TEST_CKPT"])
+torch.cuda.get_device_properties = lambda index: SimpleNamespace(total_memory=24 * 2**30)
+fast._v2_sampler_available = lambda: False
+asyncio.run(fast._worker_main())
+"""
+
+
+def _fixture_worker(monkeypatch, tmp_path, child_code):
+    make_checkpoint(tmp_path / "model")
+    original_popen = subprocess.Popen
+    monkeypatch.setattr(fast.subprocess, "Popen",
+        lambda command, **kwargs: original_popen([sys.executable, "-c", child_code], **kwargs))
+    monkeypatch.setenv("YUE2_VLLM_VERSION", "0.19.0")
+    monkeypatch.setenv("YUE2_TEST_CKPT", str(tmp_path / "model"))
+    pipe = SimpleNamespace(model_dir=Path('.'), device=torch.device('cpu'), memory_budget_gib=24)
+    return fast._Worker(pipe)
+
+
+def test_worker_main_error_reaches_only_its_request_or_caller(monkeypatch, tmp_path):
+    """Full path integration: real _worker_main -> stdout -> dispatcher ->
+    per-request queues. An engine failure after emitting a token must surface
+    as exactly one terminal error to its caller; a concurrent sibling request
+    completes, and the shared worker process stays alive."""
+    import concurrent.futures
+
+    worker = _fixture_worker(monkeypatch, tmp_path, WORKER_MAIN_FIXTURE)
+    tokens = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            failing = pool.submit(worker.request,
+                {"prefix": [0], "sampling": {}, "seed": 1, "phase": "semantic",
+                 "stream_tokens": True},
+                None, lambda phase, token: tokens.append(("fail", token)))
+            passing = pool.submit(worker.request,
+                {"prefix": [1], "sampling": {}, "seed": 2, "phase": "semantic",
+                 "stream_tokens": True},
+                None, lambda phase, token: tokens.append(("ok", token)))
+
+            with pytest.raises(RuntimeError, match="engine raised mid-generation"):
+                failing.result()
+            ids, timing, truncated = passing.result()
+            assert ids == [11, 12] and not truncated
+
+        # the failing caller saw its one streamed token before the terminal error
+        assert tokens.count(("fail", 7)) == 1
+        assert sorted(t for tag, t in tokens if tag == "ok")[:3] == [11, 12, fast.MUSIC_END]
+        # a per-request engine failure does not kill the shared worker
+        assert worker.process.poll() is None
+    finally:
+        worker.close()
+
+
+ECHO_FIXTURE = r"""
+import json, sys
+json.loads(sys.stdin.readline())
+for line in sys.stdin:
+    q = json.loads(line)
+    rid = q.get("id")
+    for token in range(200):
+        print("YUE2_FAST\t" + json.dumps({"id": rid, "event": "token", "token": token}), flush=True)
+    print("YUE2_FAST\t" + json.dumps({"id": rid, "event": "result", "ids": [12],
+                                     "timing": {}, "truncated": False}), flush=True)
+"""
+
+
+def test_worker_concurrent_writes_do_not_corrupt_framing(monkeypatch, tmp_path):
+    """Concurrent request() callers share one stdin; writes must be serialized
+    or the worker sees interleaved (unparseable) JSON lines."""
+    import concurrent.futures
+
+    worker = _fixture_worker(monkeypatch, tmp_path, ECHO_FIXTURE)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(worker.request,
+                                   {"phase": "abc", "marker": index},
+                                   None, lambda phase, token, index=index: None)
+                       for index in range(4)]
+            for future in futures:
+                assert future.result()[0] == [12]
+        assert worker.process.poll() is None
+    finally:
+        worker.close()
+
+
+def test_worker_cancellation_fails_only_the_cancelled_caller(monkeypatch, tmp_path):
+    """Cancelling one caller must not close the shared worker."""
+    worker = _fixture_worker(monkeypatch, tmp_path, ECHO_FIXTURE)
+    try:
+        with pytest.raises(InterruptedError, match="Cancelled during vLLM"):
+            worker.request({"phase": "abc"}, cancelled=lambda: True)
+        assert worker.process.poll() is None
+        # the cancelled payload's late result is dropped, and the worker still serves
+        assert worker.request({"phase": "abc"})[0] == [12]
+    finally:
+        worker.close()
