@@ -233,8 +233,15 @@ class Attention(nn.Module):
 
         if attention_mask is not None:
             out = sdpa(q, k, v, attn_mask=attention_mask[..., :k.shape[2]])
+        elif T == 1:
+            # Single-token decode is never causal. Keep SDPA kwargs static bools
+            # so torch.compile traces the layer loop as one graph; symbolic
+            # shape comparisons in is_causal break the graph per layer.
+            out = sdpa(q, k, v, is_causal=False)
+        elif k.shape[2] == T:
+            out = sdpa(q, k, v, is_causal=True)
         else:
-            out = sdpa(q, k, v, is_causal=(T > 1 and k.shape[2] == T))
+            out = sdpa(q, k, v, is_causal=False)
         return self.o_proj(out.transpose(1, 2).reshape(B, T, -1))
 
 

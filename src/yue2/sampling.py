@@ -1,6 +1,8 @@
 """Request-local sampling, preserving mode-specific historical arithmetic."""
 from __future__ import annotations
+import os
 import time
+import weakref
 import torch
 from .protocol import EOD, ABC_END, MUSIC_END, CODEC_OFFSET, CODEC_SIZE, CONTEXT
 
@@ -48,6 +50,31 @@ def distribution(logits, sampling, history, step, phase, legacy_off=False):
     return scores
 
 
+class _DecodeStep:
+    """Plain callable with a weak model reference: no module or ownership cycle."""
+
+    def __init__(self, model):
+        self.model = weakref.ref(model)
+
+    def __call__(self, input_ids, past_key_values=None, use_cache=True, logits_to_keep=1):
+        return self.model()(input_ids, past_key_values=past_key_values,
+                            use_cache=use_cache, logits_to_keep=logits_to_keep)
+
+
+def _compile_enabled():
+    return os.environ.get("YUE2_COMPILE", "").strip().lower() not in ("", "0", "false")
+
+
+def _ensure_decode_step(model):
+    """Compile once per model, with the callable owned by the model itself so
+    dropping the model releases the compiled graph and its captured weights."""
+    step = getattr(model, "_yue2_decode_step", None)
+    if step is None:
+        step = torch.compile(_DecodeStep(model), dynamic=True)
+        model._yue2_decode_step = step
+    return step
+
+
 @torch.inference_mode()
 def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_scale=1.0,
                     legacy_off=False, cancelled=None, on_token=None, use_cuda_graph=True):
@@ -79,6 +106,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
     graph = None
     positive_cache = negative_cache = None
     graph_enabled = use_cuda_graph and device.type == "cuda" and torch.version.hip is None and not getattr(model, "_yue2_fp8_originals", {})
+    decode_step = _ensure_decode_step(model) if _compile_enabled() and not graph_enabled else None
     synchronize(device)
     start = time.perf_counter()
     try:
@@ -128,11 +156,12 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
                     conditional = branch_logits[:1]
                     unconditional = branch_logits[1:] if cfg_scale != 1 else None
                 else:
-                    conditional = model(next_id, past_key_values=positive_cache, use_cache=True,
-                                        logits_to_keep=1).logits[:, -1, :]
+                    forward = decode_step if decode_step is not None else model
+                    conditional = forward(next_id, past_key_values=positive_cache, use_cache=True,
+                                          logits_to_keep=1).logits[:, -1, :]
                     if negative_cache is not None:
-                        unconditional = model(next_id, past_key_values=negative_cache, use_cache=True,
-                                              logits_to_keep=1).logits[:, -1, :]
+                        unconditional = forward(next_id, past_key_values=negative_cache, use_cache=True,
+                                                logits_to_keep=1).logits[:, -1, :]
         synchronize(device)
         seconds = time.perf_counter() - start
         count = len(history) + int(eos)
@@ -140,7 +169,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
                   "ttft_seconds": first, "output_tokens": count, "content_tokens": len(history),
                   "output_tps": count / seconds, "prefix_tokens": len(prefix),
                   "cfg_branches": 1 if cfg_scale == 1 else 2,
-                  "execution": "cuda_graph" if graph is not None else "eager",
+                  "execution": "cuda_graph" if graph is not None else ("compiled" if decode_step is not None else "eager"),
                   "attention": graph.attention_backend if graph is not None else "sdpa"}
         if use_cuda_graph and not graph_enabled:
             timing["graph_fallback_reason"] = "fp8_not_graph_validated" if getattr(model, "_yue2_fp8_originals", {}) else "rocm_eager" if torch.version.hip else "non_cuda_device"
