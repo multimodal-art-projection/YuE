@@ -75,6 +75,16 @@ def _ensure_decode_step(model):
     return step
 
 
+def _graph_enabled(model, device, requested):
+    if not requested or torch.version.hip is not None or getattr(model, "_yue2_fp8_originals", {}):
+        return False
+    if device.type == "cuda":
+        return True
+    return (device.type == "xpu"
+            and os.environ.get("YUE2_XPUGRAPH", "").strip().lower() not in ("", "0", "false")
+            and hasattr(torch.xpu, "XPUGraph") and hasattr(torch.xpu, "graph"))
+
+
 @torch.inference_mode()
 def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_scale=1.0,
                     legacy_off=False, cancelled=None, on_token=None, use_cuda_graph=True):
@@ -105,9 +115,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
 
     graph = None
     positive_cache = negative_cache = None
-    graph_enabled = (use_cuda_graph and torch.version.hip is None and not getattr(model, "_yue2_fp8_originals", {})
-                     and (device.type == "cuda"
-                          or (device.type == "xpu" and os.environ.get("YUE2_XPUGRAPH"))))
+    graph_enabled = _graph_enabled(model, device, use_cuda_graph)
     decode_step = _ensure_decode_step(model) if _compile_enabled() and not graph_enabled else None
     synchronize(device)
     start = time.perf_counter()
@@ -171,7 +179,7 @@ def generate_tokens(model, prefix, sampling, seed, phase, negative=None, cfg_sca
                   "ttft_seconds": first, "output_tokens": count, "content_tokens": len(history),
                   "output_tps": count / seconds, "prefix_tokens": len(prefix),
                   "cfg_branches": 1 if cfg_scale == 1 else 2,
-                  "execution": "cuda_graph" if graph is not None else ("compiled" if decode_step is not None else "eager"),
+                  "execution": f"{device.type}_graph" if graph is not None else ("compiled" if decode_step is not None else "eager"),
                   "attention": graph.attention_backend if graph is not None else "sdpa"}
         if use_cuda_graph and not graph_enabled:
             timing["graph_fallback_reason"] = "fp8_not_graph_validated" if getattr(model, "_yue2_fp8_originals", {}) else "rocm_eager" if torch.version.hip else "non_cuda_device"

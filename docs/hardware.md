@@ -11,7 +11,7 @@ device before `pip install .`.
 | NVIDIA, Linux or Windows | CUDA graphs when enabled; attention selected from available FlashAttention, cuDNN, and public SDPA kernels |
 | AMD ROCm | Eager AR with public SDPA; no NVIDIA private attention operators |
 | Apple Silicon | Eager AR, bucketed decode cache and short-query GQA folding |
-| Intel XPU | Eager AR by default, device-local sampling and synchronization; optional compiled decode |
+| Intel XPU | Eager AR by default, device-local sampling and synchronization; optional compiled decode or XPU graphs |
 | CPU | Eager reference path |
 
 These additional hardware paths are experimental. CPU tests cover equations,
@@ -108,6 +108,18 @@ call compiles; later calls reuse the model-owned callable. Compilation can
 change sampled outputs, so compare it separately from the eager baseline.
 Native full-song testing currently covers Intel Arc Pro B70 with torch
 2.10.0+xpu ([results](https://github.com/multimodal-art-projection/YuE/pull/255#issuecomment-6552181623)).
+
+## Experimental XPU graphs
+
+`YUE2_XPUGRAPH=1` enables AR graph capture when the XPU runtime provides
+`XPUGraph` and `graph`. Values `0` and `false` disable it. The pinned torch
+2.10 XPU wheel lacks these APIs and keeps the existing eager/compiled path.
+Graph execution takes precedence over `YUE2_COMPILE` and reports `xpu_graph`.
+Native graph testing currently covers B70 with torch 2.14.0+xpu
+([results](https://github.com/multimodal-art-projection/YuE/pull/275#issuecomment-6553873303));
+this experimental runtime does not change the package's torch pin. Fixed-input
+comparisons cover captured versus uncaptured GraphAR, not eager-pipeline or
+cross-runtime quality equivalence.
 
 ## Low memory
 
