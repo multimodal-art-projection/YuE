@@ -11,7 +11,7 @@ device before `pip install .`.
 | NVIDIA, Linux or Windows | CUDA graphs when enabled; attention selected from available FlashAttention, cuDNN, and public SDPA kernels |
 | AMD ROCm | Eager AR with public SDPA; no NVIDIA private attention operators |
 | Apple Silicon | Eager AR, bucketed decode cache and short-query GQA folding |
-| Intel XPU | Eager AR, device-local sampling and synchronization; no compile or graph cache |
+| Intel XPU | Eager AR by default, device-local sampling and synchronization; optional compiled decode |
 | CPU | Eager reference path |
 
 These additional hardware paths are experimental. CPU tests cover equations,
@@ -57,6 +57,15 @@ grouped KV heads so PyTorch can use memory-efficient SDPA instead of its math
 fallback ([#209](https://github.com/multimodal-art-projection/YuE/issues/209)).
 Changing an attention kernel can change sampled outputs; compare within the
 same runtime and backend when checking reproducibility.
+
+## Optional compiled decode
+
+Set `YUE2_COMPILE=1` to compile one-token AR decoding with `torch.compile`.
+It is off by default and is ignored while CUDA graphs are active. The first
+call compiles; later calls reuse the model-owned callable. Compilation can
+change sampled outputs, so compare it separately from the eager baseline.
+Native full-song testing currently covers Intel Arc Pro B70 with torch
+2.10.0+xpu ([results](https://github.com/multimodal-art-projection/YuE/pull/255#issuecomment-6552181623)).
 
 ## Low memory
 

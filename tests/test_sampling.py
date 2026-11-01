@@ -77,7 +77,7 @@ def test_compiled_decode_step_is_owned_by_the_model(monkeypatch):
     # The step is a plain callable: attaching it must not register a child
     # module of the model it wraps (that cycle breaks model.to() traversal).
     for m in models:
-        assert "yue2_decode_step" not in dict(m.named_modules())
+        assert "_yue2_decode_step" not in dict(m.named_modules())
         m.to(torch.float64)  # must not recurse
     del models, steps, m
     gc.collect()
@@ -89,7 +89,6 @@ def test_compiled_decode_step_released_by_pipeline_close(tmp_path, monkeypatch):
     """Pipeline.close() must release the compiled model without waiting for an
     unrelated GC cycle: the decode step holds only a weak model reference."""
     import weakref
-    from types import SimpleNamespace
     from yue2 import pipeline as pipeline_module
     from yue2 import sampling
     from yue2.modeling_yue2 import YuE2Config, YuE2ForCausalLM
@@ -105,17 +104,16 @@ def test_compiled_decode_step_released_by_pipeline_close(tmp_path, monkeypatch):
     model = YuE2ForCausalLM(cfg).eval()
     pipe = pipeline_module.YuE2Pipeline(tmp_path, tmp_path, progress=False)
     pipe._model = model
-    # Real torch.compile: dynamo guards capture the model, so only dropping
-    # the model's own reference to the compiled artifacts at close() frees
-    # the weights without waiting for an unrelated GC cycle. The step must be
-    # executed first; an untraced compile creates no guards and no cycle.
+    # Execute the real compiled callable before checking close(), retaining
+    # the step to verify that it cannot keep the model alive.
     from yue2.modeling_yue2 import StaticKVCache
     step = sampling._ensure_decode_step(model)
     assert step is model._yue2_decode_step
     assert step.model() is model
     cache = StaticKVCache(cfg.num_hidden_layers, 1, cfg.num_key_value_heads, 64,
                           cfg.head_dim, torch.float32, "cpu")
-    step(torch.tensor([[3]]), past_key_values=cache, use_cache=True, logits_to_keep=1)
+    with torch.inference_mode():
+        step(torch.tensor([[3]]), past_key_values=cache, use_cache=True, logits_to_keep=1)
     ref = weakref.ref(model)
     pipe.close()
     del pipe, model

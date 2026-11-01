@@ -51,24 +51,14 @@ def distribution(logits, sampling, history, step, phase, legacy_off=False):
 
 
 class _DecodeStep:
-    """One-token forward, so torch.compile sees a fixed [1, 1] shape per stage.
-
-    Deliberately not an nn.Module: the compiled callable is attached to the
-    model, and a Module attribute would register as a child of the very model
-    it wraps, forming a cycle that breaks model.to() traversal. The model is
-    held weakly for the same reason: the model owns the step, so a strong
-    back-reference would make pipeline close() wait on an unrelated GC cycle.
-    """
+    """Plain callable with a weak model reference: no module or ownership cycle."""
 
     def __init__(self, model):
         self.model = weakref.ref(model)
 
     def __call__(self, input_ids, past_key_values=None, use_cache=True, logits_to_keep=1):
-        model = self.model()
-        if model is None:
-            raise RuntimeError("Compiled decode step used after its model was released")
-        return model(input_ids, past_key_values=past_key_values,
-                     use_cache=use_cache, logits_to_keep=logits_to_keep)
+        return self.model()(input_ids, past_key_values=past_key_values,
+                            use_cache=use_cache, logits_to_keep=logits_to_keep)
 
 
 def _compile_enabled():
@@ -83,7 +73,6 @@ def _ensure_decode_step(model):
         step = torch.compile(_DecodeStep(model), dynamic=True)
         model._yue2_decode_step = step
     return step
-
 
 
 @torch.inference_mode()
