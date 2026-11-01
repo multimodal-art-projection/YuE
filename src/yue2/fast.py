@@ -119,6 +119,33 @@ def _v2_sampler_available():
         return False
 
 
+def _v2_runner_for(vllm_config, module_available):
+    """The selected model runner decides the sampler interface, not module
+    presence: VLLM_USE_V2_MODEL_RUNNER=0 (or a feature/Triton default) builds
+    V1 engines even where the V2 processor module exists. A runner selection
+    cannot conjure the V2 sampler where its module is absent."""
+    selected = getattr(vllm_config, "use_v2_model_runner", None)
+    if selected is None:
+        return module_available
+    return bool(selected) and module_available
+
+
+def _v2_sampler_selected(args):
+    """Sampler selection for the params wiring, read from the engine config
+    the way the engine itself computes it; falls back to module presence for
+    configs that predate the V2 model runner."""
+    if not _v2_sampler_available():
+        return False
+    create = getattr(args, "create_engine_config", None)
+    if create is None:
+        return True
+    try:
+        config = create()
+    except Exception:
+        return True
+    return _v2_runner_for(config, True)
+
+
 def _sampling_extra_args(sampling, phase, v2):
     extra = {PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window}
     if v2:
@@ -150,12 +177,14 @@ def __getattr__(name):
         from vllm.v1.worker.gpu.sample.logits_processor import LogitsProcessor
     except ImportError:
         LogitsProcessor = None
-    if LogitsProcessor is not None:
+    v2_base = LogitsProcessor  # None where the V2 processor module is absent
+
+    if v2_base is not None:
         # Model-runner V2 interface: committed tokens live on device, so the
         # windowed penalty reads req_states directly instead of mirroring.
         import torch
 
-        class WindowedPenalty(LogitsProcessor):
+        class _V2Penalty(v2_base):
             def __init__(self, vllm_config, req_states):
                 self.state = req_states
                 self.slots = {}
@@ -204,10 +233,6 @@ def __getattr__(name):
                     logits[row, ids.long()] = torch.where(values < 0, values * multiplier, values / multiplier)
                 return logits
 
-        WindowedPenalty.__module__ = __name__
-        WindowedPenalty.__qualname__ = "WindowedPenalty"
-        globals()[name] = WindowedPenalty
-        return WindowedPenalty
     from vllm.v1.sample.logits_processor import LogitsProcessor
     import torch
     import triton
@@ -228,7 +253,7 @@ def __getattr__(name):
         tl.store(logits + row * stride + ids,
                  tl.where(value < 0, value * multiplier, value / multiplier), valid)
 
-    class WindowedPenalty(LogitsProcessor):
+    class _V1Penalty(LogitsProcessor):
         @classmethod
         def validate_params(cls, params):
             extra = params.extra_args or {}
@@ -295,6 +320,23 @@ def __getattr__(name):
                 values = logits[row, ids].float()
                 logits[row, ids] = torch.where(values < 0, values * multiplier, values / multiplier).to(logits.dtype)
             return logits
+
+    class WindowedPenalty:
+        """Dispatches on the engine's selected model runner, not module
+        presence: VLLM_USE_V2_MODEL_RUNNER=0 (or a feature/Triton default)
+        builds V1 engines even where the V2 processor module exists, and the
+        vllm_config handed to the processor is authoritative either way."""
+
+        def __new__(cls, vllm_config, *interface, **kwargs):
+            if _v2_runner_for(vllm_config, v2_base is not None):
+                return _V2Penalty(vllm_config, *interface, **kwargs)
+            return _V1Penalty(vllm_config, *interface, **kwargs)
+
+        @classmethod
+        def validate_params(cls, params):
+            extra = params.extra_args or {}
+            if not 0 < float(extra.get(PENALTY, 1)) or not 1 <= int(extra.get(WINDOW, 50)) <= 100:
+                raise ValueError("Invalid window penalty")
 
     WindowedPenalty.__module__ = __name__
     WindowedPenalty.__qualname__ = "WindowedPenalty"
@@ -467,7 +509,7 @@ async def _worker_main():
                            gpu_memory_utilization=min(.9, (budget - 2 * 2**30) / total),
                            logits_processors=["yue2.fast:WindowedPenalty"], disable_log_stats=True)
     engine = AsyncLLM.from_engine_args(args)
-    v2 = _v2_sampler_available()
+    v2 = _v2_sampler_selected(args)
     load_seconds = time.perf_counter() - load_start
 
     try:

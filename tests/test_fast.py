@@ -354,3 +354,99 @@ for line in sys.stdin:
         assert actual == (list(range(1000)),{'fixture':True},False)
     finally: worker.close()
     assert processes[0].poll() is not None
+
+
+def test_sampler_selection_follows_engine_runner_not_module(monkeypatch, tmp_path):
+    """VLLM_USE_V2_MODEL_RUNNER=0 builds V1 engines even where the V2
+    processor module exists; the config handed to the processor is
+    authoritative, and an absent module stays V1 regardless of config."""
+    from types import SimpleNamespace
+    from yue2 import fast
+
+    # forced V1 with module present -> V1
+    assert fast._v2_runner_for(SimpleNamespace(use_v2_model_runner=False), True) is False
+    # forced/selected V2 with module present -> V2
+    assert fast._v2_runner_for(SimpleNamespace(use_v2_model_runner=True), True) is True
+    # config predates the runner property -> module presence decides
+    assert fast._v2_runner_for(SimpleNamespace(), True) is True
+    assert fast._v2_runner_for(SimpleNamespace(), False) is False
+    # a V2 selection cannot conjure the sampler where its module is absent
+    assert fast._v2_runner_for(SimpleNamespace(use_v2_model_runner=True), False) is False
+
+
+def test_window_penalty_dispatches_on_selected_runner(monkeypatch):
+    pytest.importorskip('triton')
+    import sys
+    from types import SimpleNamespace
+    from yue2 import fast
+
+    monkeypatch.setitem(sys.modules, "vllm.v1.worker.gpu.sample.logits_processor",
+                        SimpleNamespace(LogitsProcessor=object))
+    monkeypatch.setitem(sys.modules, "vllm.v1.sample.logits_processor",
+                        SimpleNamespace(LogitsProcessor=object))
+
+    v2_states = SimpleNamespace(device=torch.device("cpu"), vocab_size=fast.CODEC_OFFSET + fast.CODEC_SIZE)
+    # engine selects V1 while the V2 module exists
+    v1 = fast.WindowedPenalty(SimpleNamespace(use_v2_model_runner=False,
+                                          scheduler_config=SimpleNamespace(max_num_seqs=2)), "cpu", False)
+    assert hasattr(v1, "update_state") and not hasattr(v1, "add_request")
+    # engine selects V2
+    v2 = fast.WindowedPenalty(SimpleNamespace(use_v2_model_runner=True), v2_states)
+    assert hasattr(v2, "add_request") and not hasattr(v2, "update_state")
+    # config predates the property: module presence decides
+    legacy = fast.WindowedPenalty(SimpleNamespace(), v2_states)
+    assert hasattr(legacy, "add_request")  # module present -> V2
+
+
+def test_worker_params_follow_forced_v1_runner(monkeypatch, tmp_path):
+    """Through the real _worker_main: engine config reporting a V1 runner must
+    restore allowed_token_ids even with the V2 module importable."""
+    import asyncio
+    import io
+    import sys
+    from types import SimpleNamespace
+    from yue2 import fast
+
+    make_checkpoint(tmp_path / "model")
+    captured, emitted = [], []
+
+    class Engine:
+        @staticmethod
+        def from_engine_args(args):
+            return Engine()
+
+        async def generate(self, prompt, params, request_id):
+            captured.append(params)
+            yield SimpleNamespace(outputs=[SimpleNamespace(
+                token_ids=[params.stop_token_ids[0]], stop_reason=None)])
+
+        def shutdown(self):
+            pass
+
+    def sampling_params(allowed_token_ids=None, **kwargs):
+        return SimpleNamespace(allowed_token_ids=allowed_token_ids, **kwargs)
+
+    class Args(SimpleNamespace):
+        @staticmethod
+        def create_engine_config():
+            return SimpleNamespace(use_v2_model_runner=False)
+
+    monkeypatch.setitem(sys.modules, "vllm", SimpleNamespace(
+        __version__="0.32.0", SamplingParams=sampling_params))
+    monkeypatch.setitem(sys.modules, "vllm.engine.arg_utils", SimpleNamespace(AsyncEngineArgs=Args))
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine.async_llm", SimpleNamespace(AsyncLLM=Engine))
+    monkeypatch.setenv("YUE2_VLLM_VERSION", "0.32.0")
+    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda index: SimpleNamespace(total_memory=24 * 2**30))
+    monkeypatch.setattr(fast, "derive_ar_checkpoint", lambda path: tmp_path / "model")
+    monkeypatch.setattr(fast, "_v2_sampler_available", lambda: True)  # V2 module importable
+    monkeypatch.setattr(fast, "_emit", emitted.append)
+
+    setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
+    request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": "semantic", "stream_tokens": False}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
+    asyncio.run(fast._worker_main())
+
+    params, = captured
+    assert fast.PHASE not in params.extra_args
+    assert params.allowed_token_ids == (list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE))
+                                        + [fast.MUSIC_END])
