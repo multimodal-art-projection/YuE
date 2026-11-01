@@ -121,3 +121,39 @@ def test_compiled_decode_step_released_by_pipeline_close(tmp_path, monkeypatch):
     # compiled model (and its device memory) alive until an unrelated cycle.
     assert ref() is None, "close() left the compiled model alive"
     assert step.model() is None
+
+
+@pytest.mark.parametrize("flag,enabled", [("", False), ("0", False), (" FaLsE ", False), ("1", True)])
+@pytest.mark.parametrize("missing", [None, "XPUGraph", "graph"])
+def test_xpu_graph_requires_opt_in_and_available_api(monkeypatch, flag, enabled, missing):
+    from types import SimpleNamespace
+    from yue2.sampling import _graph_enabled
+
+    api = {"XPUGraph": object(), "graph": object()}
+    if missing:
+        del api[missing]
+    monkeypatch.setattr(torch, "xpu", SimpleNamespace(**api))
+    monkeypatch.setattr(torch.version, "hip", None)
+    monkeypatch.setenv("YUE2_XPUGRAPH", flag)
+    assert _graph_enabled(object(), torch.device("xpu"), True) == (enabled and missing is None)
+
+
+@pytest.mark.parametrize("device,requested,hip,fp8,expected", [
+    ("cuda", True, None, False, True),
+    ("cuda", False, None, False, False),
+    ("cuda", True, "7.1", False, False),
+    ("cuda", True, None, True, False),
+    ("xpu", False, None, False, False),
+    ("xpu", True, None, True, False),
+    ("cpu", True, None, False, False),
+    ("mps", True, None, False, False),
+])
+def test_graph_selection_preserves_existing_execution_modes(monkeypatch, device, requested, hip, fp8, expected):
+    from types import SimpleNamespace
+    from yue2.sampling import _graph_enabled
+
+    monkeypatch.setattr(torch.version, "hip", hip)
+    monkeypatch.setenv("YUE2_XPUGRAPH", "1")
+    monkeypatch.setattr(torch, "xpu", SimpleNamespace(XPUGraph=object(), graph=object()))
+    model = SimpleNamespace(_yue2_fp8_originals={"weight": object()} if fp8 else {})
+    assert _graph_enabled(model, torch.device(device), requested) is expected
