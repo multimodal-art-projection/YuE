@@ -70,7 +70,7 @@ def attention(q, k, v, *, causal=False, backend="sdpa", query_chunk_size=None):
     if query_chunk_size is not None and (isinstance(query_chunk_size, bool) or
                                         not isinstance(query_chunk_size, Integral) or query_chunk_size < 1):
         raise ValueError("query_chunk_size must be a positive integer")
-    block = query_chunk_size or (len(q) if q.device.type in {"cuda", "xpu"} and backend != "math" else 256)
+    block = query_chunk_size or (len(q) if q.device.type == "cuda" and backend != "math" else 256)
     query = q.transpose(0, 1).unsqueeze(0)
     key = k.transpose(0, 1).unsqueeze(0)
     value = v.transpose(0, 1).unsqueeze(0)
