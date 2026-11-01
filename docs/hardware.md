@@ -39,7 +39,32 @@ operation for the tested cases, not general length limits or audio-quality parit
 ## Installation
 
 Use a fresh Python 3.12 environment. The [PyTorch wheel matrix](https://pytorch.org/get-started/previous-versions/#v2100)
-lists the matching driver/runtime requirements. Install **one** of these wheels:
+lists the matching driver/runtime requirements.
+
+With [`uv`](https://docs.astral.sh/uv/), one line per accelerator; the lockfile
+resolves all platforms from a single `uv.lock`:
+
+```bash
+# NVIDIA GPUs or CPU-only inference, Linux/Windows (CUDA build from PyPI).
+uv sync --extra cuda
+
+# Intel Arc/Battlemage, Linux, with the Intel GPU driver installed.
+uv sync --extra xpu
+
+# Apple Silicon, macOS 14 or later (no extra needed).
+uv sync
+```
+
+`cuda` and `xpu` are mutually exclusive extras; passing both is an error.
+The `fast` (vLLM) extra targets the NVIDIA stack and cannot be combined
+with `xpu`; XPU vLLM instead runs from a dedicated worker interpreter
+(tracked in #257).
+The `test` extra combines with any of the above, e.g.
+`uv sync --extra xpu --extra test`. XPU users must repeat their extra on
+every `uv sync`, or uv will revert to the CUDA build. ROCm users: the uv
+extras do not serve ROCm builds; use the pip wheel instructions below.
+
+With `pip`, install **one** of these wheels instead:
 
 ```bash
 # NVIDIA, Linux or Windows; choose a CUDA build compatible with your driver.
