@@ -17,7 +17,24 @@ device before `pip install .`.
 These additional hardware paths are experimental. CPU tests cover equations,
 cache visibility, placement order, cancellation/retry and artifact integrity.
 They do not establish accelerator speed, supported song lengths or unchanged
-full-model audio quality. Native Windows, MPS, AMD and XPU acceptance is pending.
+full-model audio quality. Native reports currently cover:
+
+- **Windows, RTX 5060 Laptop 8 GB, torch 2.10.0+cu128:** two songs completed
+  NAR and VAE decoding with BF16 and FP8 AR, using `low_vram=True` and a
+  6,000-token cap ([results](https://github.com/multimodal-art-projection/YuE/issues/262#issuecomment-6545252119)).
+  A separate replay of the saved ABC text passed the previously failing
+  3,491-token prefix and produced 5,823 semantic tokens; that replay did not
+  run NAR or VAE ([details](https://github.com/multimodal-art-projection/YuE/issues/262#issuecomment-6547128123)).
+- **Intel Arc Pro B70 32 GB, torch 2.10.0+xpu:** eager generation completed
+  a 58-second song and two consecutive requests on one pipeline
+  ([results](https://github.com/multimodal-art-projection/YuE/pull/255#issuecomment-6543972086)).
+- **Linux MI350X, torch 2.12.0+rocm7.14.0:** eight BF16 attention comparisons
+  passed against CPU FP32 references. This covers neither full generation nor
+  the pinned torch 2.10 installation
+  ([details](https://github.com/multimodal-art-projection/YuE/issues/167#issuecomment-6546503576)).
+
+Native Mac and Windows AMD acceptance remains pending. These reports establish
+operation for the tested cases, not general length limits or audio-quality parity.
 
 ## Installation
 
