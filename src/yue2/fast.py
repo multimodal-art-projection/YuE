@@ -27,7 +27,7 @@ from .protocol import ABC_END, CODEC_OFFSET, CODEC_SIZE, CONTEXT, EOD, MUSIC_END
 from .storage import identity, model_identity, sha256_file, write_json
 
 WIRE = "YUE2_FAST\t"
-PENALTY, WINDOW = "yue2_window_penalty", "yue2_penalty_window"
+PENALTY, WINDOW, PHASE = "yue2_window_penalty", "yue2_penalty_window", "yue2_phase"
 
 
 def ar_keys(config):
@@ -111,107 +111,203 @@ def derive_ar_checkpoint(model_dir, cache_dir=None):
     return target
 
 
+def _v2_sampler_available():
+    try:
+        import vllm.v1.worker.gpu.sample.logits_processor  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _v2_runner_for(vllm_config, module_available):
+    """The selected model runner decides the sampler interface, not module
+    presence: VLLM_USE_V2_MODEL_RUNNER=0 (or a feature/Triton default) builds
+    V1 engines even where the V2 processor module exists. A runner selection
+    cannot conjure the V2 sampler where its module is absent."""
+    selected = getattr(vllm_config, "use_v2_model_runner", None)
+    if selected is None:
+        return module_available
+    return bool(selected) and module_available
+
+
+def _sampling_extra_args(sampling, phase, v2):
+    extra = {PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window}
+    if v2:
+        extra[PHASE] = phase
+    return extra
+
+
+def _allowed_token_ids(phase, v2):
+    """Vocabulary restriction per stage: phase masks on the V2 model-runner
+    sampler, allowed_token_ids on the V1 sampler (which has no 1024-id cap)."""
+    if v2:
+        return None
+    if phase == "abc":
+        return list(range(EOD)) + [ABC_END]
+    return list(range(CODEC_OFFSET, CODEC_OFFSET + CODEC_SIZE)) + [MUSIC_END]
+
+
 def kv_cache_bytes(config, max_sequences=1, context=CONTEXT, block_size=16):
-    positions = math.ceil(context / block_size) * block_size
+    # vLLM's admission check adds per-request pages beyond the raw context.
+    positions = math.ceil((context + 256) / block_size) * block_size
     return positions * max_sequences * config["num_hidden_layers"] * 2 * config["num_key_value_heads"] * config["head_dim"] * 2
 
 
 def __getattr__(name):
-    if name != "WindowedPenalty":
+    if name not in {"WindowedPenaltyV1", "WindowedPenaltyV2"}:
         raise AttributeError(name)
-    # vLLM resolves this FQCN only inside its optional worker processes.
-    from vllm.v1.sample.logits_processor import LogitsProcessor
-    import torch
-    import triton
-    import triton.language as tl
+    # vLLM resolves the registered FQCN inside its optional worker processes,
+    # and its loaders issubclass-check the class against the selected
+    # sampler's interface: expose one concrete class per sampler generation.
+    if name == "WindowedPenaltyV2":
+        from vllm.v1.worker.gpu.sample.logits_processor import LogitsProcessor
+        import torch
 
-    @triton.jit
-    def penalty_kernel(logits, histories, alphas, stride: tl.constexpr, window: tl.constexpr,
-                       vocab: tl.constexpr, width: tl.constexpr):
-        row = tl.program_id(0)
-        pos = tl.arange(0, width)
-        ids = tl.load(histories + row * window + pos, pos < window, other=-1)
-        equal = (ids[:, None] == ids[None, :]) & (ids[:, None] >= 0)
-        count = tl.sum(equal.to(tl.int32), axis=1)
-        earlier = tl.sum((equal & (pos[None, :] < pos[:, None])).to(tl.int32), axis=1)
-        valid = (pos < window) & (ids >= 0) & (ids < vocab) & (earlier == 0)
-        multiplier = tl.load(alphas + row * (window + 1) + count)
-        value = tl.load(logits + row * stride + ids, valid, other=0).to(tl.float32)
-        tl.store(logits + row * stride + ids,
-                 tl.where(value < 0, value * multiplier, value / multiplier), valid)
+        class WindowedPenaltyV2(LogitsProcessor):
+            # Model-runner V2 interface: committed tokens live on device, so the
+            # windowed penalty reads req_states directly instead of mirroring.
+            def __init__(self, vllm_config, req_states):
+                self.state = req_states
+                self.slots = {}
+                # vLLM caps allowed_token_ids at 1024, and each stage's allowed
+                # set is a contiguous range plus its end token anyway: express
+                # it as a precomputed additive mask applied before the penalty.
+                vocab = req_states.vocab_size
+                device = req_states.device
+                abc_mask = torch.zeros(vocab, dtype=torch.float32, device=device)
+                abc_mask[EOD:] = float("-inf")
+                abc_mask[ABC_END] = 0.
+                semantic_mask = torch.zeros(vocab, dtype=torch.float32, device=device)
+                semantic_mask[:CODEC_OFFSET] = float("-inf")
+                semantic_mask[CODEC_OFFSET + CODEC_SIZE:] = float("-inf")
+                semantic_mask[MUSIC_END] = 0.
+                self.phase_masks = {"abc": abc_mask, "semantic": semantic_mask}
 
-    class WindowedPenalty(LogitsProcessor):
-        @classmethod
-        def validate_params(cls, params):
-            extra = params.extra_args or {}
-            if not 0 < float(extra.get(PENALTY, 1)) or not 1 <= int(extra.get(WINDOW, 50)) <= 100:
-                raise ValueError("Invalid window penalty")
-
-        def __init__(self, vllm_config, device, is_pin_memory):
-            self.device, self.states = device, {}
-            self.capacity = vllm_config.scheduler_config.max_num_seqs
-            self.window = 100
-            self.host = torch.full((self.capacity, self.window), -1, dtype=torch.long, pin_memory=is_pin_memory)
-            self.histories = torch.empty_like(self.host, device=device)
-            self.alphas = torch.ones((self.capacity, self.window + 1), dtype=torch.float32, device=device)
-            self.lookup = {}
-
-        def is_argmax_invariant(self):
-            return False
-
-        def update_state(self, update):
-            if update is None:
-                return
-            for index in update.removed:
-                self.states.pop(index, None)
-            for index, params, prompt, output in update.added:
+            @classmethod
+            def validate_params(cls, params):
                 extra = params.extra_args or {}
-                self.states[index] = (output, float(extra.get(PENALTY, 1)), int(extra.get(WINDOW, 50)))
-                penalty = self.states[index][1]
-                if penalty not in self.lookup:
-                    self.lookup[penalty] = torch.pow(torch.tensor(penalty, device=self.device, dtype=torch.float32),
-                                                    torch.arange(self.window + 1, device=self.device, dtype=torch.float32))
-            for a, b, direction in update.moved:
-                if direction.name == "SWAP":
-                    va, vb = self.states.pop(a, None), self.states.pop(b, None)
-                    if va is not None:
-                        self.states[b] = va
-                    if vb is not None:
-                        self.states[a] = vb
-                else:
-                    self.states.pop(b, None)
-                    if a in self.states:
-                        self.states[b] = self.states.pop(a)
-            for index, (_, penalty, _) in self.states.items():
-                self.alphas[index].copy_(self.lookup[penalty])
+                if not 0 < float(extra.get(PENALTY, 1)) or not 1 <= int(extra.get(WINDOW, 50)) <= 100:
+                    raise ValueError("Invalid window penalty")
 
-        def apply(self, logits):
-            if logits.device.type == "cuda":
-                n = len(logits)
-                self.host[:n].fill_(-1)
-                host = self.host.numpy()
-                for row, (history, _, window) in self.states.items():
-                    recent = history[-window:]
-                    if recent and row < n:
-                        host[row, :len(recent)] = recent
-                self.histories[:n].copy_(self.host[:n], non_blocking=True)
-                penalty_kernel[(n,)](logits, self.histories, self.alphas, logits.stride(0),
-                                     self.window, logits.shape[-1], 128, num_warps=4)
+            def add_request(self, req_idx, sampling_params):
+                extra = sampling_params.extra_args or {}
+                penalty = float(extra.get(PENALTY, 1.))
+                self.slots[req_idx] = (penalty, int(extra.get(WINDOW, 50)), extra.get(PHASE))
+                return penalty != 1. or extra.get(PHASE) is not None
+
+            def apply(self, logits, ctx):
+                for row, slot in enumerate(ctx.idx_mapping_np.tolist()):
+                    penalty, window, phase = self.slots.get(slot, (1., 50, None))
+                    if phase is not None:
+                        logits[row] += self.phase_masks[phase]
+                    if penalty == 1.:
+                        continue
+                    state = self.state
+                    total = int(state.total_len.gpu[slot])
+                    prompt = int(state.prefill_len.cpu[slot])
+                    if total <= prompt:
+                        continue  # prefill steps have no committed output yet
+                    recent = state.all_token_ids.gpu[slot, max(prompt, total - window):total]
+                    ids, counts = recent.unique(return_counts=True)
+                    multiplier = penalty ** counts.to(torch.float32)
+                    values = logits[row, ids.long()]
+                    logits[row, ids.long()] = torch.where(values < 0, values * multiplier, values / multiplier)
                 return logits
-            # CPU oracle for focused state/penalty tests without a GPU.
-            for row, (history, penalty, window) in self.states.items():
-                if row >= len(logits) or not history or penalty == 1:
-                    continue
-                ids, counts = torch.tensor(history[-window:], device=logits.device).unique(return_counts=True)
-                multiplier = torch.pow(torch.tensor(penalty, device=logits.device, dtype=torch.float32), counts.float())
-                values = logits[row, ids].float()
-                logits[row, ids] = torch.where(values < 0, values * multiplier, values / multiplier).to(logits.dtype)
-            return logits
 
-    WindowedPenalty.__module__ = __name__
-    WindowedPenalty.__qualname__ = "WindowedPenalty"
-    globals()[name] = WindowedPenalty
-    return WindowedPenalty
+    else:
+        from vllm.v1.sample.logits_processor import LogitsProcessor
+        import torch
+        import triton
+        import triton.language as tl
+
+        @triton.jit
+        def penalty_kernel(logits, histories, alphas, stride: tl.constexpr, window: tl.constexpr,
+                           vocab: tl.constexpr, width: tl.constexpr):
+            row = tl.program_id(0)
+            pos = tl.arange(0, width)
+            ids = tl.load(histories + row * window + pos, pos < window, other=-1)
+            equal = (ids[:, None] == ids[None, :]) & (ids[:, None] >= 0)
+            count = tl.sum(equal.to(tl.int32), axis=1)
+            earlier = tl.sum((equal & (pos[None, :] < pos[:, None])).to(tl.int32), axis=1)
+            valid = (pos < window) & (ids >= 0) & (ids < vocab) & (earlier == 0)
+            multiplier = tl.load(alphas + row * (window + 1) + count)
+            value = tl.load(logits + row * stride + ids, valid, other=0).to(tl.float32)
+            tl.store(logits + row * stride + ids,
+                     tl.where(value < 0, value * multiplier, value / multiplier), valid)
+
+        class WindowedPenaltyV1(LogitsProcessor):
+            @classmethod
+            def validate_params(cls, params):
+                extra = params.extra_args or {}
+                if not 0 < float(extra.get(PENALTY, 1)) or not 1 <= int(extra.get(WINDOW, 50)) <= 100:
+                    raise ValueError("Invalid window penalty")
+
+            def __init__(self, vllm_config, device, is_pin_memory):
+                self.device, self.states = device, {}
+                self.capacity = vllm_config.scheduler_config.max_num_seqs
+                self.window = 100
+                self.host = torch.full((self.capacity, self.window), -1, dtype=torch.long, pin_memory=is_pin_memory)
+                self.histories = torch.empty_like(self.host, device=device)
+                self.alphas = torch.ones((self.capacity, self.window + 1), dtype=torch.float32, device=device)
+                self.lookup = {}
+
+            def is_argmax_invariant(self):
+                return False
+
+            def update_state(self, update):
+                if update is None:
+                    return
+                for index in update.removed:
+                    self.states.pop(index, None)
+                for index, params, prompt, output in update.added:
+                    extra = params.extra_args or {}
+                    self.states[index] = (output, float(extra.get(PENALTY, 1)), int(extra.get(WINDOW, 50)))
+                    penalty = self.states[index][1]
+                    if penalty not in self.lookup:
+                        self.lookup[penalty] = torch.pow(torch.tensor(penalty, device=self.device, dtype=torch.float32),
+                                                         torch.arange(self.window + 1, device=self.device, dtype=torch.float32))
+                for a, b, direction in update.moved:
+                    if direction.name == "SWAP":
+                        va, vb = self.states.pop(a, None), self.states.pop(b, None)
+                        if va is not None:
+                            self.states[b] = va
+                        if vb is not None:
+                            self.states[a] = vb
+                    else:
+                        self.states.pop(b, None)
+                        if a in self.states:
+                            self.states[b] = self.states.pop(a)
+                for index, (_, penalty, _) in self.states.items():
+                    self.alphas[index].copy_(self.lookup[penalty])
+
+            def apply(self, logits):
+                if logits.device.type == "cuda":
+                    n = len(logits)
+                    self.host[:n].fill_(-1)
+                    host = self.host.numpy()
+                    for row, (history, _, window) in self.states.items():
+                        recent = history[-window:]
+                        if recent and row < n:
+                            host[row, :len(recent)] = recent
+                    self.histories[:n].copy_(self.host[:n], non_blocking=True)
+                    penalty_kernel[(n,)](logits, self.histories, self.alphas, logits.stride(0),
+                                         self.window, logits.shape[-1], 128, num_warps=4)
+                    return logits
+                # CPU oracle for focused state/penalty tests without a GPU.
+                for row, (history, penalty, window) in self.states.items():
+                    if row >= len(logits) or not history or penalty == 1:
+                        continue
+                    ids, counts = torch.tensor(history[-window:], device=logits.device).unique(return_counts=True)
+                    multiplier = torch.pow(torch.tensor(penalty, device=logits.device, dtype=torch.float32), counts.float())
+                    values = logits[row, ids].float()
+                    logits[row, ids] = torch.where(values < 0, values * multiplier, values / multiplier).to(logits.dtype)
+                return logits
+
+    windowed = WindowedPenaltyV2 if name == "WindowedPenaltyV2" else WindowedPenaltyV1
+    windowed.__module__ = __name__
+    windowed.__qualname__ = name
+    globals()[name] = windowed
+    return windowed
 
 
 def _stop_process(process):
@@ -357,8 +453,9 @@ async def _worker_main():
         visible = os.environ.get("CUDA_VISIBLE_DEVICES")
         os.environ["CUDA_VISIBLE_DEVICES"] = visible.split(",")[device.index] if visible else str(device.index)
     import vllm
-    if vllm.__version__ != "0.19.0":
-        raise RuntimeError(f"This backend requires vllm==0.19.0, found {vllm.__version__}")
+    expected = os.environ.get("YUE2_VLLM_VERSION", "0.19.0")
+    if vllm.__version__ != expected:
+        raise RuntimeError(f"This backend requires vllm=={expected}, found {vllm.__version__}")
     from vllm import SamplingParams
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.v1.engine.async_llm import AsyncLLM
@@ -376,21 +473,26 @@ async def _worker_main():
                            enable_chunked_prefill=True, enable_prefix_caching=True,
                            kv_cache_memory_bytes=kv_bytes,
                            gpu_memory_utilization=min(.9, (budget - 2 * 2**30) / total),
-                           logits_processors=["yue2.fast:WindowedPenalty"], disable_log_stats=True)
+                           disable_log_stats=True)
+    # Build the engine configuration once, before the engine starts: the
+    # registered processor, engine construction, and sampling parameters all
+    # follow the same selected runner.
+    v2 = _v2_runner_for(args.create_engine_config(), _v2_sampler_available())
+    args.logits_processors = ["yue2.fast:WindowedPenaltyV2" if v2 else "yue2.fast:WindowedPenaltyV1"]
     engine = AsyncLLM.from_engine_args(args)
     load_seconds = time.perf_counter() - load_start
+
     try:
         while line := await asyncio.to_thread(sys.stdin.readline):
             request = json.loads(line)
             sampling = Sampling(**request["sampling"])
             abc = request["phase"] == "abc"
             end = ABC_END if abc else MUSIC_END
-            allowed = list(range(EOD)) + [end] if abc else list(range(CODEC_OFFSET, CODEC_OFFSET + CODEC_SIZE)) + [end]
             params = SamplingParams(temperature=sampling.temperature, top_p=sampling.top_p,
                        top_k=sampling.top_k, repetition_penalty=1., min_tokens=sampling.min_tokens,
                        max_tokens=sampling.max_tokens, seed=request["seed"], stop_token_ids=[end],
-                       allowed_token_ids=allowed, detokenize=False,
-                       extra_args={PENALTY: sampling.repetition_penalty, WINDOW: sampling.penalty_window})
+                       allowed_token_ids=_allowed_token_ids(request["phase"], v2), detokenize=False,
+                       extra_args=_sampling_extra_args(sampling, request["phase"], v2))
             start, first, output, sent = time.perf_counter(), None, None, 0
             async for result in engine.generate({"prompt_token_ids": request["prefix"]}, params, str(uuid.uuid4())):
                 output = result.outputs[0]
