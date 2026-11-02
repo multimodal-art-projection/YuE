@@ -148,7 +148,7 @@ def _allowed_token_ids(phase, v2):
 
 
 def kv_cache_bytes(config, max_sequences=1, context=CONTEXT, block_size=16):
-    # vLLM's admission check adds per-request pages beyond the raw context.
+    # Leave 256 tokens of headroom for engine page/reserve accounting (0.30).
     positions = math.ceil((context + 256) / block_size) * block_size
     return positions * max_sequences * config["num_hidden_layers"] * 2 * config["num_key_value_heads"] * config["head_dim"] * 2
 
@@ -204,7 +204,7 @@ def __getattr__(name):
                         continue
                     state = self.state
                     total = int(state.total_len.gpu[slot])
-                    prompt = int(state.prefill_len.cpu[slot])
+                    prompt = int(state.prompt_len.cpu[slot])
                     if total <= prompt:
                         continue  # prefill steps have no committed output yet
                     recent = state.all_token_ids.gpu[slot, max(prompt, total - window):total]
@@ -473,13 +473,13 @@ async def _worker_main():
                            enable_chunked_prefill=True, enable_prefix_caching=True,
                            kv_cache_memory_bytes=kv_bytes,
                            gpu_memory_utilization=min(.9, (budget - 2 * 2**30) / total),
-                           disable_log_stats=True)
-    # Build the engine configuration once, before the engine starts: the
-    # registered processor, engine construction, and sampling parameters all
-    # follow the same selected runner.
-    v2 = _v2_runner_for(args.create_engine_config(), _v2_sampler_available())
-    args.logits_processors = ["yue2.fast:WindowedPenaltyV2" if v2 else "yue2.fast:WindowedPenaltyV1"]
-    engine = AsyncLLM.from_engine_args(args)
+                           logits_processors=["yue2.fast:WindowedPenaltyV1"], disable_log_stats=True)
+    # Older engines select V1 when a custom processor is registered.
+    engine_config = args.create_engine_config()
+    v2 = _v2_runner_for(engine_config, _v2_sampler_available())
+    engine_config.model_config.logits_processors = [
+        "yue2.fast:WindowedPenaltyV2" if v2 else "yue2.fast:WindowedPenaltyV1"]
+    engine = AsyncLLM.from_vllm_config(engine_config, disable_log_stats=True)
     load_seconds = time.perf_counter() - load_start
 
     try:
