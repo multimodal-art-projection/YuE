@@ -96,7 +96,8 @@ def test_cfg_and_device_fallback_preserve_protocol(monkeypatch, cfg, legacy, rea
     assert result[1]['backend_actual'] == 'torch' and result[1]['fallback_reason'] == reason
 
 
-def test_worker_transport_handles_many_buffered_lines(monkeypatch):
+@pytest.mark.parametrize("device,worker_python", [("cuda", None), ("xpu", "/opt/yue2-vllm/bin/python")])
+def test_worker_transport_handles_many_buffered_lines(monkeypatch, device, worker_python):
     original_popen = subprocess.Popen
     worker_code = """
 import sys,json
@@ -107,8 +108,27 @@ for line in sys.stdin:
     lines.append('YUE2_FAST\\t'+json.dumps({'event':'result','ids':[12], 'timing':{},'truncated':False}))
     sys.stdout.write('\\n'.join(lines)+'\\n'); sys.stdout.flush()
 """
-    monkeypatch.setattr(fast.subprocess, "Popen", lambda command, **kwargs: original_popen([sys.executable, '-c', worker_code], **kwargs))
-    pipe = SimpleNamespace(model_dir=Path('.'), device=torch.device('cpu'), memory_budget_gib=24)
+    if worker_python:
+        monkeypatch.setenv("YUE2_VLLM_PYTHON", worker_python)
+    else:
+        monkeypatch.delenv("YUE2_VLLM_PYTHON", raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/parent/lib")
+    monkeypatch.setenv("FI_PROVIDER", "user-provider")
+    monkeypatch.delenv("FI_PROVIDER_PATH", raising=False)
+
+    def launch(command, **kwargs):
+        assert command[0] == (worker_python or sys.executable)
+        env = kwargs["env"]
+        if device == "xpu":
+            assert env["LD_LIBRARY_PATH"] == "/opt/yue2-vllm/lib:/parent/lib"
+            assert env["FI_PROVIDER_PATH"] == "/opt/yue2-vllm/lib"
+        else:
+            assert env["LD_LIBRARY_PATH"] == "/parent/lib"
+        assert env["FI_PROVIDER"] == "user-provider"
+        return original_popen([sys.executable, '-c', worker_code], **kwargs)
+
+    monkeypatch.setattr(fast.subprocess, "Popen", launch)
+    pipe = SimpleNamespace(model_dir=Path('.'), device=torch.device(device), memory_budget_gib=24)
     worker = fast._Worker(pipe)
     tokens = []
     try:
@@ -145,17 +165,27 @@ _v2_sampler_available = fast._v2_sampler_available
     (True, False, False),  # 0.32 with V1 explicitly selected
 ])
 @pytest.mark.parametrize("phase", ["abc", "semantic"])
-def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, module_available, selected, v2, phase):
+@pytest.mark.parametrize("device,visible,physical", [
+    ("cuda:1", "2,4", "4"), ("xpu:1", "2,4", "4"), ("xpu:1", None, "1"),
+])
+def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, module_available, selected, v2, phase,
+                                        device, visible, physical):
     import asyncio
     import io
 
     make_checkpoint(tmp_path / "model")
+    selector = "ZE_AFFINITY_MASK" if device.startswith("xpu") else "CUDA_VISIBLE_DEVICES"
+    if visible is None:
+        monkeypatch.delenv(selector, raising=False)
+    else:
+        monkeypatch.setenv(selector, visible)
     captured, emitted, registered, stopped, configs = [], [], [], [], []
 
     class Engine:
         @staticmethod
         def from_vllm_config(config, disable_log_stats):
             assert len(configs) == 1 and config is configs[0]
+            assert os.environ[selector] == physical
             assert disable_log_stats
             registered.append(config.model_config.logits_processors)
             return Engine()
@@ -185,11 +215,12 @@ def test_worker_applies_stage_vocabulary(monkeypatch, tmp_path, module_available
     monkeypatch.setitem(sys.modules, "vllm.engine.arg_utils", SimpleNamespace(AsyncEngineArgs=Args))
     monkeypatch.setitem(sys.modules, "vllm.v1.engine.async_llm", SimpleNamespace(AsyncLLM=Engine))
     monkeypatch.setenv("YUE2_VLLM_VERSION", "0.19.0")
-    monkeypatch.setattr(torch.cuda, "get_device_properties", lambda index: SimpleNamespace(total_memory=24 * 2**30))
+    accelerator = torch.xpu if device.startswith("xpu") else torch.cuda
+    monkeypatch.setattr(accelerator, "get_device_properties", lambda index: SimpleNamespace(total_memory=24 * 2**30))
     monkeypatch.setattr(fast, "derive_ar_checkpoint", lambda path: tmp_path / "model")
     monkeypatch.setattr(fast, "_v2_sampler_available", lambda: module_available)
     monkeypatch.setattr(fast, "_emit", emitted.append)
-    setup = {"device": "cuda", "model_dir": "unused", "memory_budget_gib": 24}
+    setup = {"device": device, "model_dir": "unused", "memory_budget_gib": 24}
     request = {"prefix": [1], "sampling": {}, "seed": 71, "phase": phase, "stream_tokens": True}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(setup) + "\n" + json.dumps(request) + "\n"))
     asyncio.run(fast._worker_main())
@@ -404,3 +435,17 @@ def test_registered_penalty_class_matches_loader_interface(monkeypatch, selected
         assert issubclass(cls, module.LogitsProcessor)  # the loader contract
     finally:
         vars(fast).pop(name, None)
+
+
+@pytest.mark.parametrize("device", ["cuda", "xpu"])
+def test_dedicated_worker_does_not_require_vllm_in_parent(monkeypatch, device):
+    cleared, calls = [], []
+    monkeypatch.setenv("YUE2_VLLM_PYTHON", "/opt/yue2-vllm/bin/python")
+    monkeypatch.setattr(fast.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(getattr(torch, device), "empty_cache", lambda: cleared.append(device))
+    worker = SimpleNamespace(request=lambda *args: calls.append(args) or ([12], {}, False))
+    monkeypatch.setattr(fast, "_Worker", lambda pipe: worker)
+    pipe = SimpleNamespace(device=torch.device(device), quantization="none", _model=None, _vae=None)
+    result = fast.generate_vllm(pipe, [1], Sampling(max_tokens=4, min_tokens=0), 71, "semantic")
+    assert result == ([12], {}, False) and len(calls) == 1
+    assert cleared == [device] and pipe._vllm_worker is worker

@@ -432,7 +432,7 @@ def generate_vllm(pipe, prefix, sampling, seed, phase, negative=None, cfg_scale=
     if importlib.util.find_spec("vllm") is None and not os.environ.get("YUE2_VLLM_PYTHON"):
         # The worker subprocess owns the vLLM import; when it runs from a
         # dedicated interpreter, the parent environment need not have vllm.
-        raise ImportError("Install the optional CUDA backend with pip install 'yue2-infer[fast]'")
+        raise ImportError("Install yue2-infer[fast] for CUDA or set YUE2_VLLM_PYTHON to a vLLM environment")
     if getattr(pipe, "_vllm_worker", None) is None:
         import torch
         if pipe._model is not None:
@@ -440,8 +440,8 @@ def generate_vllm(pipe, prefix, sampling, seed, phase, negative=None, cfg_scale=
         if getattr(pipe, "_vae", None) is not None:
             pipe._vae.to("cpu")
         gc.collect()
-        (torch.xpu.empty_cache() if torch.device(pipe.device).type == "xpu"
-         else torch.cuda.empty_cache())
+        accelerator = torch.xpu if pipe.device.type == "xpu" else torch.cuda
+        accelerator.empty_cache()
         pipe._vllm_worker = _Worker(pipe)
     payload = {"prefix": list(prefix), "sampling": dataclasses.asdict(sampling),
                "seed": seed, "phase": phase, "stream_tokens": on_token is not None}
@@ -461,10 +461,11 @@ async def _worker_main():
     import torch
     setup = json.loads(sys.stdin.readline())
     device = torch.device(setup["device"])
-    if device.type == "cuda" and device.index is not None:
+    if device.index is not None:
         # vLLM sees one logical device; respect the parent scheduler's mapping.
-        visible = os.environ.get("CUDA_VISIBLE_DEVICES")
-        os.environ["CUDA_VISIBLE_DEVICES"] = visible.split(",")[device.index] if visible else str(device.index)
+        selector = "ZE_AFFINITY_MASK" if device.type == "xpu" else "CUDA_VISIBLE_DEVICES"
+        visible = os.environ.get(selector)
+        os.environ[selector] = visible.split(",")[device.index] if visible else str(device.index)
     import vllm
     expected = os.environ.get("YUE2_VLLM_VERSION", "0.19.0")
     if vllm.__version__ != expected:

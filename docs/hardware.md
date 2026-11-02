@@ -58,7 +58,7 @@ uv sync
 `cuda` and `xpu` are mutually exclusive extras; passing both is an error.
 The `fast` (vLLM) extra targets the NVIDIA stack and cannot be combined
 with `xpu`; XPU vLLM instead runs from a dedicated worker interpreter
-(tracked in #257).
+(see below).
 The `test` extra combines with any of the above, e.g.
 `uv sync --extra xpu --extra test`. XPU users must repeat their extra on
 every `uv sync`, or uv will revert to the CUDA build. ROCm users: the uv
@@ -109,6 +109,15 @@ Contributor tests cover CUDA with 0.19.0, 0.30.0 and 0.32.0, including forced V1
 on 0.32.0 ([results](https://github.com/multimodal-art-projection/YuE/pull/278#issuecomment-6563347899)).
 These runs establish stage completion and valid token ranges, not output or
 quality equivalence across engine versions. The default backend remains PyTorch.
+
+For Intel vLLM, install a compatible XPU engine in a separate environment and
+install the same YuE2 revision there. Set `YUE2_VLLM_PYTHON` to that environment's
+absolute Python path and `YUE2_VLLM_VERSION` to its engine version, then use
+`--device xpu --backend vllm`. The parent environment does not need vLLM.
+Indexed devices such as `xpu:1` select within `ZE_AFFINITY_MASK` when it is set.
+The worker sets its own runtime library paths and preserves explicit libfabric
+provider settings. B70 reports cover 0.30.0+xpu and 0.32.0+xpu; this remains
+experimental and does not enable concurrent requests or a resident worker.
 
 ## Optional compiled decode
 
