@@ -155,9 +155,6 @@ def test_fp8_cpu_rejected():
         quant.prepare_fp8_ar(torch.nn.Linear(32, 32), "cpu")
 
 
-_v2_sampler_available = fast._v2_sampler_available
-
-
 @pytest.mark.parametrize("module_available,selected,v2", [
     (False, None, False),  # 0.19: no runner property or V2 processor
     (False, True, False),  # 0.30: V2 runner still uses the V1 processor interface
@@ -257,9 +254,12 @@ def test_window_processor_counting_and_request_moves():
     torch.testing.assert_close(processor.apply(logits[:1].clone()), actual[:1])
 
 
-@pytest.mark.skipif(not _v2_sampler_available(), reason='vLLM model-runner V2 sampler is not installed')
-def test_window_processor_v2_reads_committed_tokens():
-    cls = fast.WindowedPenaltyV2
+def test_window_processor_v2_reads_committed_tokens(monkeypatch):
+    # Exercise the tensor math without requiring the optional engine in CPU CI.
+    monkeypatch.setitem(sys.modules, "vllm.v1.worker.gpu.sample.logits_processor",
+                        SimpleNamespace(LogitsProcessor=type("V2Interface", (), {})))
+    monkeypatch.setitem(vars(fast), "WindowedPenaltyV2", None)
+    cls = fast.__getattr__("WindowedPenaltyV2")
     vocab = fast.CODEC_OFFSET + fast.CODEC_SIZE
     req_states = SimpleNamespace(
         device=torch.device("cpu"), max_num_reqs=2, vocab_size=vocab,
@@ -281,12 +281,16 @@ def test_window_processor_v2_reads_committed_tokens():
     # penalty disables the adjustment for that row from then on.
     assert not processor.add_request(1, SimpleNamespace(extra_args={fast.PENALTY: 1.}))
     torch.testing.assert_close(processor.apply(logits.clone(), ctx)[1], logits[1])
-    # The yue2_phase mask keeps only each stage's range plus its end token.
-    assert processor.add_request(0, SimpleNamespace(extra_args={fast.PENALTY: 1., fast.PHASE: "abc"}))
-    row = torch.zeros(1, vocab)
-    out = processor.apply(row.clone(), SimpleNamespace(idx_mapping_np=np.array([0])))[0]
-    assert out[fast.EOD - 1] == 0 and out[fast.ABC_END] == 0
-    assert torch.isinf(out[fast.EOD:fast.ABC_END]).all() and torch.isinf(out[fast.ABC_END + 1:]).all()
+    # Each mask retains exactly its stage vocabulary plus its end token.
+    for phase, allowed in [
+        ("abc", list(range(fast.EOD)) + [fast.ABC_END]),
+        ("semantic", list(range(fast.CODEC_OFFSET, fast.CODEC_OFFSET + fast.CODEC_SIZE)) + [fast.MUSIC_END]),
+    ]:
+        assert processor.add_request(0, SimpleNamespace(extra_args={fast.PENALTY: 1., fast.PHASE: phase}))
+        out = processor.apply(torch.zeros(1, vocab), SimpleNamespace(idx_mapping_np=np.array([0])))[0]
+        expected = torch.full((vocab,), -float("inf"))
+        expected[allowed] = 0.
+        torch.testing.assert_close(out, expected, atol=0, rtol=0)
 
 
 def test_fp8_ar_selection_idempotence_and_exact_restore(monkeypatch):
@@ -414,11 +418,6 @@ def test_registered_penalty_class_matches_loader_interface(monkeypatch, selected
     selected sampler's interface: the stock V1 (0.19) and model-runner V2
     (0.32) loaders both issubclass-check the class named by the FQCN. The
     runner selection and the registered class must agree on the interface."""
-    pytest.importorskip('triton')
-    import sys
-    from types import SimpleNamespace
-    from yue2 import fast
-
     monkeypatch.setitem(sys.modules, "vllm.v1.sample.logits_processor",
                         SimpleNamespace(LogitsProcessor=type("V1Interface", (), {})))
     if module_available:
@@ -426,6 +425,8 @@ def test_registered_penalty_class_matches_loader_interface(monkeypatch, selected
                             SimpleNamespace(LogitsProcessor=type("V2Interface", (), {})))
     config = SimpleNamespace() if selected is None else SimpleNamespace(use_v2_model_runner=selected)
     v2 = fast._v2_runner_for(config, module_available)
+    if not v2:
+        pytest.importorskip("triton")
     name = "WindowedPenaltyV2" if v2 else "WindowedPenaltyV1"
     vars(fast).pop(name, None)
     try:
