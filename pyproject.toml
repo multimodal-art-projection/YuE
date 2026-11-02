@@ -40,7 +40,7 @@ yue2 = "yue2.cli:main"
 conflicts = [
   [{ extra = "cuda" }, { extra = "xpu" }],
   # vllm and triton are NVIDIA-targeted; XPU vLLM runs from a dedicated
-  # interpreter/venv (see #257), so the fast extra must not combine with xpu.
+  # interpreter/venv (see docs/hardware.md), so the fast extra must not combine with xpu.
   [{ extra = "xpu" }, { extra = "fast" }],
 ]
 
