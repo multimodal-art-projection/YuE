@@ -100,6 +100,16 @@ fallback ([#209](https://github.com/multimodal-art-projection/YuE/issues/209)).
 Changing an attention kernel can change sampled outputs; compare within the
 same runtime and backend when checking reproducibility.
 
+## Optional vLLM backend
+
+The `fast` extra pins vLLM 0.19.0. For a separately installed engine, set
+`YUE2_VLLM_VERSION` to its exact version. Processor selection follows the engine
+configuration and preserves each stage's vocabulary restriction on V1 and V2.
+Contributor tests cover CUDA with 0.19.0, 0.30.0 and 0.32.0, including forced V1
+on 0.32.0 ([results](https://github.com/multimodal-art-projection/YuE/pull/278#issuecomment-6563347899)).
+These runs establish stage completion and valid token ranges, not output or
+quality equivalence across engine versions. The default backend remains PyTorch.
+
 ## Optional compiled decode
 
 Set `YUE2_COMPILE=1` to compile one-token AR decoding with `torch.compile`.
