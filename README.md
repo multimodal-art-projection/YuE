@@ -84,6 +84,7 @@
 - **⚡ YuE2-Turbo.** [NOIZ's inference and serving toolkit →](https://github.com/NoizAI/YuE2-Turbo) accelerates YuE2 and supports concurrent requests.
 - **🎛️ ComfyUI.** YuE2 has native nodes and an [official text-to-music workflow →](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/audio_yue2_text2music.json).
 - **🎬 Maestro.** [Maestro →](https://github.com/Blizaine/Maestro) includes YuE2 for local song generation, composition planning, and covers. [Creator's post →](https://x.com/blizaine/status/2101852048538968458)
+- **🎚️ Remiqora.** [Remiqora →](https://github.com/inikolax/remiqora) runs YuE2 locally in a desktop music studio for Windows, macOS and Linux, with stems, MIDI, an AI arranger and a multitrack editor.
 
 ## Hear what you can make
 
