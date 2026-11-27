@@ -84,6 +84,7 @@
 - **⚡ YuE2-Turbo.** [NOIZ's inference and serving toolkit →](https://github.com/NoizAI/YuE2-Turbo) accelerates YuE2 and supports concurrent requests.
 - **🎛️ ComfyUI.** YuE2 has native nodes and an [official text-to-music workflow →](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/audio_yue2_text2music.json).
 - **🎬 Maestro.** [Maestro →](https://github.com/Blizaine/Maestro) includes YuE2 for local song generation, composition planning, and covers. [Creator's post →](https://x.com/blizaine/status/2101852048538968458)
+- **🎚️ Ruach Studio.** [Ruach Studio →](https://github.com/igrbible/Ruach_Studio) is a free, open-source (AGPL) Studio around YuE2 on your own GPU: the score first, covers, LoRA training, stems, a DAW and video, on Linux and Windows, macOS in beta. Its YuE2 fine-tunes and the YuE2-VAE-RS x3 decoder are on [Hugging Face →](https://huggingface.co/goldhub/YuE2-RS-Finetunes).
 
 ## Hear what you can make
 
